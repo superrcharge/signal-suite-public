@@ -1,0 +1,97 @@
+# The renderer is pinned, because an unpinned one silently changes the output.
+#
+# Two ways this bites, both measured on 2026-09-10 while re-rendering these
+# four. typst 0.15 rewrote the SVG writer: same geometry to the decimal, but
+# minified and without the `typst-doc` / `typst-shape` classes, so every file
+# came back a 155KB whole-rewrite diff with no content change in it. And a
+# machine without CaskaydiaMono NFP renders in a fallback face with no error
+# at all - the first attempt here produced a diagram 160KB smaller and simply
+# in the wrong typeface. Same disease as an unpinned `go install ...@latest`,
+# and the same fix.
+#
+# Install the font too, or the render is wrong and says nothing:
+#   brew install --cask font-caskaydia-mono-nerd-font
+[tools]
+typst = "0.14.2"
+
+[tasks.render]
+description = "Render every diagram to dual-theme SVGs"
+shell = "bash -c"
+run = '''
+set -e
+# `sed -i` is not portable and failed silently here on 2026-09-10. GNU sed
+# takes -i with no argument, so `sed -i -E` works with GNU sed. BSD sed
+# on macOS reads the NEXT ARGUMENT as the backup suffix, so -i consumed "-E":
+# the expression then ran as a basic regex, where `+` is a literal plus and
+# matches nothing, and a `.svg-E` backup was dropped beside every diagram.
+#
+# The failure mode is the one this file already exists to prevent - no error,
+# exit 0, and a rendered SVG that keeps its pt width/height and so stops
+# scaling in the READMEs that embed it. Only a diagram re-rendered on a Mac
+# was affected, which is why it survived until one was.
+#
+# No -i at all is portable everywhere, so that is what this does.
+strip_size() {
+  sed -E 's/ width="[0-9.]+pt"//; s/ height="[0-9.]+pt"//' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+}
+
+find . -type f -name '*.typ' -not -path '*/design/*' | while read -r f; do
+  base="${f%.typ}"
+  if grep -qE '^//[[:space:]]*render:[[:space:]]*static\b' "$f"; then
+    mode=static
+  else
+    mode=responsive
+  fi
+  for theme in light dark; do
+    out="${base}-${theme}.svg"
+    typst compile --root . --input theme=${theme} "$f" "$out"
+    if [ "$mode" = responsive ]; then
+      strip_size "$out"
+    fi
+  done
+  printf "  rendered  %-24s %s\n" "${base#./}-{light,dark}.svg" "($mode)"
+done
+'''
+
+[tasks.render-file]
+description = "Render a single diagram: mise run render-file <file.typ>"
+usage = 'arg "<file>" help="Path to the .typ diagram"'
+shell = "bash -c"
+run = '''
+set -e
+# `sed -i` is not portable and failed silently here on 2026-09-10. GNU sed
+# takes -i with no argument, so `sed -i -E` works with GNU sed. BSD sed
+# on macOS reads the NEXT ARGUMENT as the backup suffix, so -i consumed "-E":
+# the expression then ran as a basic regex, where `+` is a literal plus and
+# matches nothing, and a `.svg-E` backup was dropped beside every diagram.
+#
+# The failure mode is the one this file already exists to prevent - no error,
+# exit 0, and a rendered SVG that keeps its pt width/height and so stops
+# scaling in the READMEs that embed it. Only a diagram re-rendered on a Mac
+# was affected, which is why it survived until one was.
+#
+# No -i at all is portable everywhere, so that is what this does.
+strip_size() {
+  sed -E 's/ width="[0-9.]+pt"//; s/ height="[0-9.]+pt"//' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+}
+
+f="${usage_file?}"
+base="${f%.typ}"
+if grep -qE '^//[[:space:]]*render:[[:space:]]*static\b' "$f"; then
+  mode=static
+else
+  mode=responsive
+fi
+for theme in light dark; do
+  out="${base}-${theme}.svg"
+  typst compile --root . --input theme=${theme} "$f" "$out"
+  if [ "$mode" = responsive ]; then
+    strip_size "$out"
+  fi
+done
+printf "  rendered  %-24s %s\n" "${base#./}-{light,dark}.svg" "($mode)"
+'''
+
+[tasks.clean]
+description = "Remove all rendered SVGs"
+run = "find . -maxdepth 1 -name '*.svg' -delete && echo 'cleaned'"

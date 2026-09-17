@@ -1,0 +1,308 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# One CI run per ref. Every push to a PR branch used to leave the previous full
+# run going: a Postgres service, a Trivy apt install and two Go toolchains, all
+# computing an answer about a commit nobody was waiting on any more.
+# Never cancel on main, where each run is the record for a distinct merge.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # Runs alongside everything else rather than gating it, on purpose. Its value
+  # is the diagnosis, not the saved compute: when a version pin disagrees with
+  # another, this reports it in under a minute in plain language, instead of the
+  # failure surfacing as a `go install` error two thirds of the way through the
+  # Backend job or, worse, as a Security job that goes red on 21 stdlib CVEs in
+  # code nobody here wrote.
+  #
+  # The local gate is what actually saves the push - `node scripts/verify.mjs`
+  # runs this same script as its first step. This job is the backstop for a
+  # commit that arrives from the other machine or the GitHub web UI, where no
+  # local hook ran at all.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'backend/go.mod'
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Check version compatibility
+        run: node scripts/preflight-versions.mjs
+
+      # Same job because it answers the same kind of question and costs the same
+      # nothing: a claim in a doc, checked against the file it describes.
+      - name: Check the docs agree with the code
+        run: node scripts/check-docs.mjs
+
+      # And the third of the same kind: the frontend's page framework, held to
+      # one definition. Source-only, so it needs no toolchain beyond node.
+      - name: Check the UI tokens agree with the pages
+        run: node scripts/check-ui-tokens.mjs
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'backend/go.mod'
+          cache-dependency-path: backend/go.sum
+
+      # Pinned deliberately. Two constraints bind, in opposite directions, and the
+      # order they are resolved in matters:
+      #
+      #   1. golangci-lint refuses to run when the Go it was BUILT with is lower
+      #      than the `go` directive of the module it analyzes. Measured: raising
+      #      go.mod to 1.27.0 against a go1.26-built binary produced
+      #      "the Go language version (go1.26) used to build golangci-lint is lower
+      #       than the targeted Go version (1.27.0)" and it analyzed nothing.
+      #   2. It also cannot be OLDER than the Go whose stdlib source it reads. That
+      #      is the half this comment used to deny, on the reasoning that a newer
+      #      compiler building an older `go` directive is fine. True for `go build`,
+      #      false here, because the linter type-checks stdlib SOURCE.
+      #
+      # `go install` is what satisfies (1) automatically: it builds the linter with
+      # the Go setup-go just resolved from go.mod, so binary and target always agree.
+      # Never swap this for a prebuilt download - a prebuilt binary is built with
+      # whatever Go the project used, and that is what left the dev container
+      # panicking while this job stayed green.
+      #
+      # The pin cannot move ahead of go.mod. v2.13.2 declares go 1.26.0, so pinning
+      # it while go.mod said 1.25.13 failed here on 2026-08-27 with
+      # "requires go >= 1.26.0 (running go 1.25.13; GOTOOLCHAIN=local)" - the same
+      # failure /ship check 5b records from the v1.0.0 ship. go.mod went to 1.26.0
+      # first, which is what makes this pin installable. Raise go.mod, then the pin,
+      # never the reverse:
+      #   go list -m -f '{{.GoVersion}}' github.com/golangci/golangci-lint/v2@<newest>
+      #
+      # When raising go.mod, land on the newest PATCH of the minor, never the bare `.0`.
+      # The Security job resolves its toolchain from this same directive, so `go 1.26.0`
+      # hands govulncheck an unpatched stdlib and fails it. See the comment on that job.
+      # `node scripts/preflight-versions.mjs` checks this, and every other version
+      # relationship in this file, without needing a CI run to find out.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+
+      - name: Lint
+        run: golangci-lint run
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit tests
+        run: go test ./...
+
+      # Pinned for the same reason as golangci-lint above: an unpinned install is a
+      # build that changes with no commit behind it. v3.27.3 declares go 1.25.7, so it
+      # resolves against any `go` directive at or above that. Check that still holds
+      # before raising it.
+      #
+      # The driver-exclusion tags are not an optimisation, they are a flakiness
+      # fix. goose's cmd package registers every dialect it supports, so a plain
+      # install compiles ClickHouse, MySQL, MSSQL, SQLite, Vertica, YDB and
+      # libsql into a binary this repo only ever points at Postgres - pulling
+      # their transitive grpc, protobuf and otel trees along with them. Every one
+      # of those modules is a checksum-database round trip that can fail and take
+      # the whole Backend job with it, which is what happened on an earlier pull request:
+      #
+      #   modernc.org/sqlite@v1.54.0: verifying module: reading
+      #   https://sum.golang.org/tile/8/0/x224/582: stream error; INTERNAL_ERROR
+      #
+      # Nothing was wrong with the commit. The step just had ~40 chances to lose
+      # a network race and lost one.
+      #
+      # Measured, not assumed: 11 dependencies and 17.6 MB with the tags, against
+      # 58.0 MB without, and `goose ... postgres ... status` still resolves the
+      # dialect. Tag names come from the `//go:build !no_*` constraints on
+      # cmd/goose/driver_*.go - there is a no_postgres too, which is the one to
+      # leave off.
+      - name: Install goose
+        run: |
+          go install -tags='no_clickhouse no_libsql no_mssql no_mysql no_sqlite3 no_vertica no_ydb' \
+            github.com/pressly/goose/v3/cmd/goose@v3.27.3
+
+      - name: Run migrations
+        run: goose -dir migrations postgres "postgres://postgres:postgres@localhost:5432/app_test?sslmode=disable" up
+
+      - name: Integration tests
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: app_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          # CI never set DB_SSLMODE and reached sslmode=disable purely through
+          # the default, so the floor added later would stop these tests dead
+          # without this. The service container is a throwaway on localhost.
+          ALLOW_INSECURE_DB: "true"
+        run: go test -tags=integration -v ./...
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test -- --run
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+  # The gate's own unit tests. Deliberately its own job rather than a step in
+  # `style` below: `style` is `pull_request`-only because its em dash check needs
+  # a merge base, and folding these tests in there meant they never ran on a push
+  # to main. A broken detector should surface as a failing test wherever it
+  # breaks, not only on the branches that happen to have a base to diff against.
+  scripts:
+    name: Script tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Script unit tests
+        run: node --test "scripts/lib/**/*.test.mjs"
+
+      # CSV coverage ran only through verify.mjs, which is a local pre-push
+      # concern - so a PR merged from the web UI, or any push made with
+      # --no-verify, got no CSV coverage check at all. This is the same gap
+      # check-em-dash-ci.mjs was written to close for the style rule. Pure
+      # filesystem inspection, so it needs no Go toolchain and belongs here.
+      - name: CSV coverage
+        run: node scripts/check-csv-coverage.mjs
+
+  style:
+    name: Style
+    runs-on: ubuntu-latest
+
+    # Only meaningful on a PR, where there is a base branch to diff against.
+    # On a push to main the merge base is HEAD itself, so the diff is empty and
+    # the job would report a pass it never actually computed. Repo policy is
+    # that main only receives PR merges, so the PR run is the real gate.
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: the check needs the merge base with the target branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: No em dashes in added lines
+        run: node scripts/check-em-dash-ci.mjs "origin/${{ github.event.pull_request.base.ref }}"
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Run Trivy vulnerability scanner
+        working-directory: .
+        run: trivy fs --severity CRITICAL,HIGH --exit-code 1 --format table .
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'backend/go.mod'
+          cache-dependency-path: backend/go.sum
+
+      # Pinned to keep the install reproducible. v1.7.0 declares go 1.25.0, so it resolves
+      # against any `go` directive at or above that. The vulnerability database is fetched
+      # at run time, so pinning the binary does not freeze what it knows about.
+      #
+      # What this step scans is decided by `go-version-file` above: setup-go installs the
+      # EXACT patch named in backend/go.mod, so that directive doubles as the toolchain pin
+      # for this job. A directive of `go 1.26.0` therefore ships the base 1.26 release and
+      # every stdlib CVE fixed since. Measured on 2026-08-27: raising the directive from
+      # 1.25.13 to 1.26.0 to satisfy golangci-lint took this job from green to 21 findings,
+      # every one of them "Fixed in: go1.26.1/.2/.3" and none of them in code this repo
+      # wrote. Keep the directive on a current PATCH, not merely a current minor.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+      - name: Run govulncheck
+        run: govulncheck ./...

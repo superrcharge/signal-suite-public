@@ -1,0 +1,38 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - bodyclose
+    - misspell
+
+  # v2 schema. This lived under a top-level `issues.exclude-rules:` block, which
+  # is the v1 key - golangci-lint v2 reads exclusions from here instead and
+  # silently ignored the old block, so none of these exclusions had been applying
+  # since the v2 upgrade. Found when bodyclose flagged a _test.go file the config
+  # already claimed to exempt.
+  exclusions:
+    rules:
+      # Test files: gosec flags fixture paths and permissions that are not a
+      # threat in a test, bodyclose cannot see a t.Cleanup close, and errcheck
+      # objects to the deliberate ignoring of teardown errors.
+      - path: _test\.go
+        linters:
+          - gosec
+          - bodyclose
+          - errcheck
+      # There was a second rule here disabling all eight linters for
+      # `.*_gen\.go`. No such file has ever existed in this module - the only
+      # generated artifact in the repo is frontend/src/generated/csv-columns.ts,
+      # which Go never sees. It was the same failure shape as the v1/v2 key above:
+      # config that reads as coverage and matches nothing. Removed rather than
+      # left in place, so that if generated Go is introduced later the exemption
+      # is a deliberate decision instead of one already silently granted.

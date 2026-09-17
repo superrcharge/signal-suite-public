@@ -1,0 +1,29 @@
+# Dependencies
+frontend/node_modules
+backend/vendor
+
+# Development artifacts
+frontend/dist
+frontend/.vite
+backend/tmp
+
+# Test artifacts
+**/*_test.go
+frontend/src/**/*.test.ts
+frontend/src/**/*.test.tsx
+frontend/src/test/
+
+# Git and CI
+.git
+.github
+
+# Local config
+.env
+.env.*
+*.local
+
+# Secrets
+secrets
+
+# OS artifacts
+.DS_Store

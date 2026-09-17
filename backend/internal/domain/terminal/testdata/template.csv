@@ -1,0 +1,10 @@
+# REQUIRED: name (case-insensitive unique). Everything else is optional.
+# Delete every # line and the EXAMPLE rows. Keep the header row below.
+# Model - Starshield: mini | hp    Paradigm: hornet | ragno    OneWeb: ow7 | ow10 | ow11
+# Sections: asqd | bsqd
+# Status: available | alert | alert-blue | alert-green | on-mission | reserved | inop
+# PoP pin (Starshield only): us-east | us-west | germany | uk | australia
+name,model,kit,pim,serial,section,status,owner,owner_email,owner_phone,pop_pin,notes,tag
+EXAMPLE STARSHIELD,mini,KIT-X-001,,SN-EXAMPLE-001,asqd,available,SGT Example,example@example.mil,DSN 312-555-0000,us-east,Delete me,Operation Example
+EXAMPLE PARADIGM,hornet,,PIM-X-001,SN-EXAMPLE-002,asqd,available,SGT Example,example@example.mil,DSN 312-555-0000,,Delete me,Operation Example
+EXAMPLE MINIMAL,,,,,,,,,,,,

@@ -1,0 +1,63 @@
+# Development Dockerfile with Air hot-reload
+FROM golang:1.27.1-alpine
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache gcc musl-dev git wget
+
+# Pin the toolchain to the base image's Go so a dependency can never silently
+# pull a newer one in (matches the golang image default; stated here explicitly).
+ENV GOTOOLCHAIN=local
+
+# Install Air for hot reloading.
+# Pinned, and the pin has moved: v1.67.1 was the ceiling only while the base
+# image was on Go 1.25, because v1.67.2+ declares go 1.26.0. The base image is
+# now 1.27.0, so that ceiling is gone and this tracks the current release.
+# Still explicit rather than @latest - an unpinned install is a build that
+# changes with no commit behind it.
+RUN go install github.com/air-verse/air@v1.67.4
+
+# golangci-lint, so /ship check 1d can actually run inside this container.
+#
+# Built from source with THIS image's Go, deliberately, and not installed as a
+# prebuilt binary. The prebuilt release binaries are built with whatever Go the
+# golangci-lint project used, which is go1.26 as of v2.13.2, and golangci-lint
+# type-checks the standard library source that ships in the image. A go1.26
+# binary reading the 1.27 stdlib in this image panics outright:
+#
+#   panic: file requires newer Go version go1.27 (application built with go1.26)
+#
+# It is a panic, not a diagnostic, so the whole lint step is lost rather than
+# degraded. `go install` makes the linter's build toolchain the image's own by
+# construction, so this can never drift again when the base image moves.
+#
+# Note the constraint this satisfies is the same one CI's comment describes, and
+# it is why CI was green while this container was broken: CI `go install`s it too.
+# golangci-lint refuses to run when the Go it was BUILT with is older than the
+# `go` directive of the module being analyzed - and equally, it cannot parse
+# stdlib source newer than that Go. Both are fixed by building it here.
+#
+# Pinned rather than @latest: an unpinned install is a build that changes with
+# no commit behind it. Keep it in step with .github/workflows/ci.yml and the host -
+# all three run this same version, which is what stops a lint finding appearing in
+# one place and not another.
+#
+# v2.12.2 is not an option here even though it satisfies the version gate. Its
+# vendored staticcheck (honnef.co/go/tools v0.7.0) cannot build IR for the Go 1.27
+# stdlib and panics part way through:
+#
+#   buildir: package "poll": unexpected expr: *ast.KeyValueExpr
+#
+# So the image's Go sets a floor on the linter version as well as being the thing
+# that has to build it.
+RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+
+# Copy go mod files
+COPY go.mod go.sum* ./
+RUN go mod download 2>/dev/null || true
+
+# Source code will be mounted via volume
+# Air will build and run the application
+
+CMD ["air", "-c", ".air.toml"]

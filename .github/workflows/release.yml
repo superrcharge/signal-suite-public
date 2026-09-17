@@ -1,0 +1,102 @@
+# Runs on ubuntu-latest - a containerised self-hosted runner image is itself
+# a containerized runner with no Docker daemon and insufficient capabilities
+# for rootless podman's user-namespace setup. ubuntu-latest ships Docker +
+# Buildx out of the box, which is what build-push-action and the Trivy scan
+# (via socket-mounted aquasec/trivy) need.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+# Serialize releases. Two tags pushed close together both push to GHCR and both
+# move `latest`, and whichever finishes second wins - which can be the older tag.
+# cancel-in-progress is false on purpose: a half-cancelled release leaves a tag
+# built but not published, which is worse than waiting.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/asset-tracker
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.GHCR_IMAGE }}
+          # latest=false suppresses the action's default `latest` tag on SemVer
+          # pushes; the explicit type=raw line below already emits `latest`
+          # with a prerelease guard, so without this we'd see it twice.
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - name: Build image (load locally for scan)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.prod
+          load: true
+          tags: ${{ env.GHCR_IMAGE }}:scan-target
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image for vulnerabilities (CRITICAL/HIGH)
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --format table \
+            ${{ env.GHCR_IMAGE }}:scan-target
+
+      - name: Push image to GHCR
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Create GitHub Release
+        uses: taiki-e/create-gh-release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          changelog: CHANGELOG.md

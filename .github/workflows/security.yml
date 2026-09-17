@@ -1,0 +1,68 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+  # On demand, so a fix can be confirmed without waiting for Monday or pushing
+  # a commit to main purely to re-trigger the scan.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  trivy:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Run Trivy vulnerability scanner
+        run: trivy fs --severity CRITICAL,HIGH --exit-code 1 --format table .
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'backend/go.mod'
+          cache-dependency-path: backend/go.sum
+
+      # Pinned to keep the install reproducible. v1.7.0 declares go 1.25.0, so it resolves
+      # against any `go` directive at or above that. The vulnerability database is fetched
+      # at run time, so pinning the binary does not freeze what it knows about.
+      #
+      # What this step scans is decided by `go-version-file` above: setup-go installs the
+      # EXACT patch named in backend/go.mod, so that directive doubles as the toolchain pin
+      # for this job. A directive of `go 1.26.0` therefore ships the base 1.26 release and
+      # every stdlib CVE fixed since. Measured on 2026-08-27: raising the directive from
+      # 1.25.13 to 1.26.0 to satisfy golangci-lint took this job from green to 21 findings,
+      # every one of them "Fixed in: go1.26.1/.2/.3" and none of them in code this repo
+      # wrote. Keep the directive on a current PATCH, not merely a current minor.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+      - name: Run govulncheck
+        run: govulncheck ./...

@@ -1,0 +1,43 @@
+# Combined production Dockerfile - frontend + backend in one image
+# Produces a distroless container with minimal attack surface.
+# Consumers add app-specific VITE_* ARGs via `docker build --build-arg` as needed.
+
+# ── Stage 1: Build frontend ────────────────────────────────────────
+FROM node:26-alpine AS frontend-builder
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+
+COPY frontend/ .
+RUN npm run build
+
+# ── Stage 2: Build backend ─────────────────────────────────────────
+FROM golang:1.27-alpine AS backend-builder
+
+ENV GOTOOLCHAIN=auto
+
+WORKDIR /app
+
+COPY backend/go.mod backend/go.sum* ./
+RUN go mod download 2>/dev/null || true
+
+COPY backend/ .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+
+# ── Stage 3: Distroless runtime ────────────────────────────────────
+FROM gcr.io/distroless/static-debian12:nonroot
+
+WORKDIR /app
+
+COPY --from=backend-builder /app/main .
+COPY --from=frontend-builder /app/dist ./static
+
+# Distroless nonroot user (UID 65532) is the default
+USER nonroot
+
+EXPOSE 3001
+
+ENTRYPOINT ["./main"]

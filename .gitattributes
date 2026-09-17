@@ -1,0 +1,10 @@
+# Normalize line endings to LF in both the repository and the working tree.
+#
+# Git for Windows ships core.autocrlf=true in its system config, which checks
+# out CRLF on Windows. The repository already stores LF, so nothing is broken -
+# but gofmt treats CRLF as unformatted and flags every .go file, which buries
+# real formatting problems in noise. Pinning eol=lf makes host-side gofmt a
+# usable signal and keeps the Windows and macOS checkouts identical.
+#
+# text=auto still detects binary files and leaves them untouched.
+* text=auto eol=lf

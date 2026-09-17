@@ -1,0 +1,86 @@
+# Development Docker Compose Override
+# Usage: docker compose -f compose.yaml -f compose.dev.yaml up --build
+#
+# Enables hot reloading for frontend development. Auth is bypassed (AUTH_ENABLED=false).
+# Access the app directly at http://localhost:3001
+
+services:
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: app
+    ports:
+      - "3001:3001"
+    environment:
+      - SERVER_PORT=3001
+      - DB_HOST=postgresql
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=app
+      - DB_SSLMODE=disable
+      # Permits the line above. Without it the backend refuses to start, which
+      # is the point: a deployed environment that loses DB_SSLMODE must fail
+      # loudly rather than connect unencrypted. 
+      - ALLOW_INSECURE_DB=true
+      - FRONTEND_MODE=proxy
+      - FRONTEND_PROXY_URL=http://frontend:5173
+      - AUTH_ENABLED=false
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - go-modules:/go/pkg/mod
+      # audit_wiring_test.go reads ../frontend/src/pages/audit-page.tsx to prove
+      # the audit filter offers every resource type the backend actually emits.
+      # Relative to /app that resolves to /frontend, which did not exist here, so
+      # `go test ./...` inside the container failed on a test that passes on the
+      # host. It went unnoticed because verify.mjs only takes the container path
+      # when the container happens to be up. Read-only: the backend must never
+      # write into the frontend tree.
+      - ./frontend:/frontend:ro
+    # CMD from Dockerfile: air -c .air.toml
+    # Dev mode needs longer startup (Air compiles Go code)
+    healthcheck:
+      # No `test:` here on purpose - podman-compose concatenates list values
+      # across -f files instead of replacing them, so a test defined here is
+      # appended to compose.yaml's and the merged argv is garbage. The base
+      # probe already hits the right URL; only the timings need overriding.
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # Frontend dev server with hot reloading
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend-dev
+    ports:
+      - "5173:5173"
+    # No VITE_API_URL. The SPA calls /api/v1 against its own origin
+    # (frontend/src/services/api-client.ts), so there is nothing to point at -
+    # and a VITE_* value is baked into browser code at build time, which means
+    # a Docker-internal hostname like `app` would not resolve in the user's
+    # browser even if something did read it.
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - app-network
+    healthcheck:
+      # 127.0.0.1, not localhost: /etc/hosts maps localhost to both 127.0.0.1
+      # and ::1, BusyBox wget tries ::1 first, and Vite's --host 0.0.0.0 binds
+      # IPv4 only - so the probe was refused and the container sat permanently
+      # "unhealthy" while serving fine.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5173"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+volumes:
+  go-modules:

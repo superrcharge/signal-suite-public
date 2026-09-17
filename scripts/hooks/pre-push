@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# Pre-push hook: one call into the project's single verification command.
+#
+# Everything this used to run inline now lives in scripts/verify.mjs, so the
+# hook, /ship, and /execute-plan cannot drift apart on what "passing" means.
+#
+# Two bugs from the inline version are fixed by that move, not by this file:
+#
+#   1. A missing golangci-lint used to print "skipping" and let the push
+#      through, which is the linted-nothing-and-reported-nothing failure the
+#      old comment in here warned about one branch away. verify.mjs fails.
+#   2. Backend checks ran host-side here but in the container under /ship.
+#      verify.mjs prefers the container, matching /ship and CI.
+#
+# Skip with: git push --no-verify
+
+# --reuse-receipt: the Stop gate has almost always just forced a full passing
+# run on this exact tree, and the digest is over file content rather than HEAD,
+# so committing does not invalidate it. Without the flag the ordinary
+# verify -> commit -> push sequence paid the full run twice, every push. With
+# it, the two network-sensitive steps always run and the rest are honoured from
+# .claude/.verify-receipt.json - and any change to the tree, a missing receipt,
+# or an unreadable one all fall straight back to the full run.
+#
+# The point is not the saved minutes. A gate this expensive is one people start
+# passing --no-verify to, and this file prints that flag two lines below.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+if ! node "$REPO_ROOT/scripts/verify.mjs" --reuse-receipt; then
+    echo ""
+    echo "Pre-push checks FAILED. Push aborted."
+    echo "To skip: git push --no-verify"
+    exit 1
+fi
+
+exit 0

@@ -1,0 +1,10 @@
+/* TEAM */
+  Creator: Michael Charge
+  Created: 2026
+
+/* SITE */
+  Name: Signal Suite (Asset Tracker)
+  Stack: Go, Fiber, React, Vite, PostgreSQL
+  Standards: humanstxt.org
+
+Created by Michael Charge in 2026.

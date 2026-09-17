@@ -1,0 +1,9 @@
+# REQUIRED: name (case-insensitive unique) and type. Everything else is optional.
+# Delete every # line and the EXAMPLE rows. Keep the header row below.
+# Type: remote | ifk | atk
+# Status: available | alert | alert-blue | alert-green | on-mission | reserved | inop
+# Networks (BLACK, SECRET, TS): true | false  (blank = false)
+# Sections: asqd | bsqd
+name,type,status,black,secret,topsecret,section,owner,owner_email,owner_phone,location,notes
+EXAMPLE REMOTE,remote,available,true,false,false,asqd,SGT Example,example@example.mil,DSN 312-555-0000,Bldg 100,Delete me
+EXAMPLE MINIMAL,ifk,,,,,,,,,,

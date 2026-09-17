@@ -1,0 +1,250 @@
+/* SHF Catalog design tokens: fonts, print rules and the graphite/paper ramp.
+   Imported per page by the catalog and PACE routes, by page-banner.tsx, and by
+   signal-suite-mark.tsx for Oswald. The amber scale (--shf-amber*) is defined
+   globally in theme/global-styles.tsx from theme.palette.primary, so the shell
+   and the content share one accent rather than two definitions of it. */
+
+@font-face {
+  font-family: "Oswald";
+  src: url("/fonts/Oswald-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("/fonts/BarlowCondensed-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("/fonts/BarlowCondensed-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("/fonts/BarlowCondensed-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("/fonts/BarlowCondensed-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("/fonts/BarlowCondensed-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Roboto - the shell's body font, named by `theme.typography.fontFamily`.
+   Self-hosted like every other family here, so nothing is fetched at runtime
+   and air-gapped deployments work offline. woff2 rather than ttf because, unlike the four
+   families above, Roboto is never embedded in a .pptx: the sheet sets its own
+   body font explicitly (see the [data-sheet-root] rule below) rather than
+   inheriting this one, so `SHEET_FONT_FACES` has no reason to carry it.
+   400/500/700 only - 600 and 800 synthesise from 700, which is what the app
+   was reviewed against. */
+@font-face {
+  font-family: "Roboto";
+  src: url("/fonts/Roboto-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Roboto";
+  src: url("/fonts/Roboto-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Roboto";
+  src: url("/fonts/Roboto-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/IBMPlexSans-VariableFont.ttf") format("truetype");
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/IBMPlexSans-Italic-VariableFont.ttf") format("truetype");
+  font-weight: 100 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/IBMPlexMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/IBMPlexMono-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/IBMPlexMono-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+
+  /* Hard one-page boundary. The article is absolutely positioned so it
+     never expands this wrapper beyond 1056px. transform scale is injected
+     dynamically by CatalogPrintPage after fonts load. */
+  .catalog-print-wrapper {
+    position: relative;
+    width: 816px;
+    height: 100vh;
+    overflow: hidden;
+    break-inside: avoid-page;
+  }
+
+  .catalog-print-wrapper article {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: top left;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  /* The wrapper is the printed page, and it was the only page box in the app
+     with no paper under it. Both catalog pages draw an 816x1056 cream box on
+     screen and position the scaled article inside it, so a record shorter than
+     a page still sits on a full page; print has only the article, whose height
+     flows with the record. So the paper stopped where the sheet stopped, and a
+     sparse record showed the sheet's own bottom edge as a line 253px up from
+     the foot of the page.
+
+     Paint only, print only, additive on purpose. The rules above are untouched:
+     background causes no reflow, and the scale is measured from the article's
+     on-screen scrollHeight before any print rule exists, so this cannot reach
+     the scale, the sheet's size, or its position. */
+  .catalog-print-wrapper {
+    background: var(--shf-paper);
+  }
+
+  /* The PACE sheet's one-page boundary, the landscape sibling of the rule above.
+     The sheet is drawn at exactly 1056x816, US Letter landscape at 96dpi, so
+     nothing needs scaling here - it only needs containing.
+
+     What produced a blank second page was 16px of padding-bottom on the flex
+     wrapper, outside an 816px Paper on an 816px page. overflow: auto did not
+     clip it: the height is auto, so the padding is real laid-out height. That
+     padding is wanted on screen, and SheetPreview is shared with
+     pace-section-page, which is why this is a print-only class rather than a
+     change to the component's sx. */
+  .pace-print-wrapper {
+    position: relative;
+    width: 1056px;
+    height: 100vh;
+    overflow: hidden;
+    break-inside: avoid-page;
+    padding: 0 !important;
+  }
+
+  .pace-print-wrapper > * {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+}
+
+:root {
+  --shf-black:        #0A0A0A;
+  --shf-graphite-900: #141618;
+  --shf-graphite-800: #1C1F22;
+  --shf-graphite-700: #25292D;
+  --shf-graphite-600: #2F343A;
+  --shf-graphite-500: #444A52;
+  --shf-graphite-400: #6B7178;
+  --shf-graphite-300: #9AA0A8;
+
+  --shf-white:  #FFFFFF;
+  --shf-paper:  #F4F2EC;
+  --shf-paper-2:#E7E3D8;
+  --shf-bone:   #D9D4C5;
+
+  --shf-info:   #3B8FD6;
+
+  /* The counterpart --shf-info always implied and the palette never had, so a
+     form primitive had no colour to mark a bad field with and simply did not
+     mark one. Matches the dark theme's palette.error.main in theme.ts. */
+  --shf-error:  #F85149;
+
+  /* Light surface vars - data sheet lives on paper */
+  --fg-1:        #0A0A0A;
+  --fg-2:        #2A2D31;
+  --fg-3:        #5A5F66;
+  --fg-4:        #8A8F96;
+  --border-soft: #D9D4C5;
+
+  --font-display:   "Oswald", "Arial Narrow", sans-serif;
+  --font-condensed: "Barlow Condensed", "Oswald", sans-serif;
+  --font-body:      "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono:      "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+}
+
+/* A printable sheet sets its own body font instead of inheriting the shell's.
+ *
+ * This is not cosmetic. A sheet is captured by `rasterize.ts` into a standalone
+ * clone that cannot reach the page's loaded fonts, so every face it draws with
+ * has to be inlined from `SHEET_FONT_FACES` - a deliberately narrow list of the
+ * four families this file self-hosts for the sheets. Anything on the sheet that
+ * merely INHERITED `theme.typography.fontFamily` was therefore exported in a
+ * substituted font, silently: measured at 52 elements on the data sheet.
+ *
+ * That was already true before the shell had a real font - it inherited the
+ * theme's unloadable "Roboto", fell through to Helvetica on screen, and
+ * exported as whatever the capture resolved. Naming the sheet's own body font
+ * here closes it, and keeps the shell free to use a family the export does not
+ * carry.
+ */
+[data-sheet-root] {
+  font-family: var(--font-body);
+}

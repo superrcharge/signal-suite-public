@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+
+    /* Required by project references */
+    "composite": true,
+    "emitDeclarationOnly": true,
+
+    /* Without an outDir, emitDeclarationOnly writes vite.config.d.ts and
+       vitest.config.d.ts straight into frontend/, which is why .gitignore and
+       eslint.config.js both carry entries to paper over them. Emitting into
+       node_modules keeps generated output out of the source tree entirely. */
+    "outDir": "./node_modules/.tmp/config-types",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["vite.config.ts", "vitest.config.ts"]
+}

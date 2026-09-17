@@ -1,0 +1,73 @@
+# Run the app on your own machine: one production container plus PostgreSQL.
+#
+#   cp .env.selfhost.example .env.selfhost     # set POSTGRES_PASSWORD
+#   make selfhost-build                        # or the raw command in docs/self-hosting.md
+#   open http://127.0.0.1:3001
+#
+# Standalone on purpose, not an overlay on compose.yaml: that file bind-mounts a
+# host-built frontend/dist and pins container names the dev stack uses. This one
+# builds Dockerfile.prod, which compiles the frontend and the Go binary inside
+# the image, so the host needs neither Node nor Go.
+#
+# AUTH_ENABLED=false means there is no sign-in and every visitor is the built-in
+# admin. The port is bound to 127.0.0.1 by default so that is not reachable from
+# the LAN by accident; see docs/self-hosting.md before changing SELFHOST_BIND.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: asset-tracker:selfhost
+    environment:
+      - SERVER_PORT=3001
+      - DB_HOST=postgresql
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.selfhost}
+      - DB_NAME=app
+      - DB_SSLMODE=disable
+      # Permits the line above. Postgres is only reachable on this compose
+      # network, which is why unencrypted is acceptable here and nowhere else.
+      - ALLOW_INSECURE_DB=true
+      - FRONTEND_MODE=static
+      - FRONTEND_STATIC_PATH=/app/static
+      - AUTH_ENABLED=false
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
+    ports:
+      - "${SELFHOST_BIND:-127.0.0.1}:${SELFHOST_PORT:-3001}:3001"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    # No healthcheck: the runtime image is distroless (no shell, no wget), so
+    # the probe compose.yaml uses cannot run here. `restart` covers a crash;
+    # scripts/verify-deploy.mjs covers "is it actually serving".
+    restart: unless-stopped
+    networks:
+      - selfhost
+
+  postgresql:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.selfhost}
+      - POSTGRES_DB=app
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # No published port: the database is reachable only from the app container.
+    restart: unless-stopped
+    networks:
+      - selfhost
+
+volumes:
+  postgresql-data:
+
+networks:
+  selfhost:
+    driver: bridge

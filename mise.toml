@@ -1,0 +1,52 @@
+# mise.toml - optional mise task wrappers around the Makefile.
+# The Makefile remains the source of truth; this file exists so that users of
+# mise (https://mise.jdx.dev) can discover and run the same tasks with
+# `mise run <task>`. Delete this file if you prefer Make-only workflows.
+
+[tools]
+go = "1.26.8"   # keep equal to backend/go.mod; preflight-versions.mjs owns that number
+node = "26"
+
+[tasks.dev]
+description = "Start development environment with hot reload"
+run = "make dev"
+
+[tasks."dev-build"]
+description = "Rebuild and start development environment"
+run = "make dev-build"
+
+[tasks.prod]
+description = "Build and start production environment"
+run = "make prod"
+
+[tasks."prod-build"]
+description = "Rebuild and start production environment"
+run = "make prod-build"
+
+[tasks.stop]
+description = "Stop all containers"
+run = "make stop"
+
+[tasks.logs]
+description = "Follow logs for all services"
+run = "make logs"
+
+[tasks."frontend-check"]
+description = "Frontend lint + typecheck + tests"
+run = "make frontend-check"
+
+[tasks."setup-hooks"]
+description = "Install git pre-push hooks"
+run = "make setup-hooks"
+
+[tasks.scan]
+description = "Security scan (backend + frontend)"
+run = "make scan"
+
+[tasks."scan-backend"]
+description = "Security scan backend only (gosec + govulncheck)"
+run = "make scan-backend"
+
+[tasks."scan-frontend"]
+description = "Security scan frontend only (npm audit)"
+run = "make scan-frontend"

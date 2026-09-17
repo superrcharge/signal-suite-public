@@ -1,0 +1,74 @@
+{
+  "$comment": [
+    "Declared CSV coverage, one entry per directory under backend/internal/domain/.",
+    "scripts/lib/csv-coverage.mjs reads this; verify.mjs fails when a domain is absent",
+    "from it, or when a declaration disagrees with the routes that domain registers.",
+    "",
+    "States: yes | no | deferred. Anything that is not 'yes' needs a why.<capability>,",
+    "and a 'deferred' reason must start with the issue number tracking it.",
+    "",
+    "The point is not to force every domain to have CSV. It is that a domain without",
+    "it has said so on purpose. Six domains went eight releases with no export and no",
+    "record of whether that was a decision, which is the gap this closes."
+  ],
+  "domains": {
+    "terminal": { "export": "yes", "import": "yes", "template": "yes" },
+    "kit": { "export": "yes", "import": "yes", "template": "yes" },
+    "equipment": { "export": "yes", "import": "yes", "template": "yes" },
+    "waveform": { "export": "yes", "import": "yes", "template": "yes" },
+    "satcomservice": { "export": "yes", "import": "yes", "template": "yes" },
+    "transport": { "export": "yes", "import": "yes", "template": "yes" },
+    "radionet": { "export": "yes", "import": "yes", "template": "yes" },
+    "platform": { "export": "yes", "import": "yes", "template": "yes" },
+
+    "contract": {
+      "export": "yes",
+      "import": "no",
+      "template": "no",
+      "why": {
+        "import": "Contracts arrive one at a time from the KO. There has never been a batch to load, and the table has no unique index to dedupe an upload against.",
+        "template": "No import, so a template would be a file that leads nowhere."
+      }
+    },
+    "pace": {
+      "export": "yes",
+      "import": "no",
+      "template": "no",
+      "why": {
+        "import": "A channel row is meaningless without a plan and a net that already exist. A CSV would bypass every cross-domain check the editor performs.",
+        "template": "No import, so a template would be a file that leads nowhere."
+      }
+    },
+
+    "audit": {
+      "export": "no",
+      "import": "no",
+      "template": "no",
+      "why": {
+        "export": "An append-only record of who did what. Handing it out as a file is a different decision from showing it in an admin view, and has not been taken.",
+        "import": "Writing to the audit log from a file forges history.",
+        "template": "No import, so nothing to template."
+      }
+    },
+    "user": {
+      "export": "no",
+      "import": "no",
+      "template": "no",
+      "why": {
+        "export": "The roster plus role is PII. Not a download.",
+        "import": "Users are synced from Entra on first sign-in. A CSV would create accounts the identity provider does not know about.",
+        "template": "No import, so nothing to template."
+      }
+    },
+    "section": {
+      "export": "no",
+      "import": "no",
+      "template": "no",
+      "why": {
+        "export": "A dozen rows, all visible in the sidebar dialog.",
+        "import": "Sections are created a few at a time in a dialog, and deleting one has to prompt for terminal and kit reassignment. A bulk path would have to reimplement that.",
+        "template": "No import, so nothing to template."
+      }
+    }
+  }
+}

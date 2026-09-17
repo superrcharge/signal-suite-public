@@ -1,0 +1,15 @@
+export { DashboardPage } from './dashboard-page';
+export { UsersPage } from './users-page';
+export { NotFoundPage } from './not-found-page';
+export { KitsPage } from './kits-page';
+export { ContractsPage } from './contracts-page';
+export { CatalogPage } from './catalog-page';
+export { CatalogSheetPage } from './catalog-sheet-page';
+export { CatalogEditorPage } from './catalog-editor-page';
+export { CatalogPrintPage } from './catalog-print-page';
+export { NetsPage } from './nets-page';
+export { PaceSectionPage } from './pace-section-page';
+export { PaceIndexPage } from './pace-index-page';
+export { PaceEditorPage } from './pace-editor-page';
+export { PacePrintPage } from './pace-print-page';
+export { NetsIndexPage } from './nets-index-page';

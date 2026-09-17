@@ -1,0 +1,91 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# diagrams/ IS tracked - both the .typ sources and the rendered SVGs. The SVGs
+# are committed because the README embeds them through GitHub's raw URLs, and
+# because rendering needs typst plus the CaskaydiaMono NFP font. An untracked
+# diagram is one that exists on exactly one machine, which is what happened to
+# the previous set: three diagrams, three months stale, referenced by nothing.
+# Regenerate with: cd diagrams && mise run render
+
+# lavish-axi review artifacts. Local visualization output, written into
+# whatever repo the tool runs in, and regenerable from the session that
+# produced it. Without this rule it reappears and /ship step 4 flags it again.
+.lavish/
+
+# draw.io temp files
+.$*.drawio.bkp
+.$*.drawio.dtmp
+
+# Go
+*.test
+coverage.out
+coverage.html
+
+# Air hot-reload build output
+backend/tmp/
+
+# Frontend
+*.tsbuildinfo
+frontend/*.config.d.ts
+.vite/
+
+# VS Code workspace files (machine-specific paths)
+*.code-workspace
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+
+# Generated /handoff output (session scratch, superseded on every run)
+.claude/context/handoff.md
+
+# Verification receipt written by scripts/verify.mjs. Local run state, keyed to
+# one machine's working tree, and meaningless anywhere else.
+.claude/.verify-receipt.json
+.claude/.execute-plan-status.json
+
+# Containers
+docker-compose.override.yml
+
+# Docker secrets (contain real credentials, never commit)
+secrets/*
+!secrets/.gitkeep
+
+# Logs
+*.log
+
+# Self-hosted stack: the one env file with a password in it, and pg_dump output
+.env.selfhost
+backups/
+
+# Design handoff bundles. A reference drawing plus its notes, dropped in to get
+# a design into the app - the HTML mock in one is a prototype of the intended
+# look, never production code to port. Once the design ships, the bundle is
+# history and the app itself is the record, so these stay out of the repo.
+design_handoff_*/

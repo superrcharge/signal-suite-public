@@ -1,0 +1,19 @@
+# Compose overlay that flips the backend into Entra-auth-enabled mode for
+# local validation against your own Entra tenant. Layered on top of:
+#   docker compose -f compose.yaml -f compose.dev.yaml -f compose.dev.entra.yaml up -d
+#
+# Or via the wrapper target:
+#   make dev-entra
+#
+# The frontend reads VITE_AUTH_* from frontend/.env.local (Vite default).
+# The backend reads AUTH_TENANT_ID + AUTH_CLIENT_ID from .env.entra.local
+# at the repo root (gitignored - never commit). AUTH_AUTHORITY_HOST is
+# set inline since it isn't sensitive.
+
+services:
+  app:
+    env_file:
+      - .env.entra.local
+    environment:
+      - AUTH_ENABLED=true
+      - AUTH_AUTHORITY_HOST=login.microsoftonline.com

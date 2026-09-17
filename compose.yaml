@@ -1,0 +1,68 @@
+services:
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: app
+    ports:
+      - "3001:3001"
+    environment:
+      - SERVER_PORT=3001
+      - DB_HOST=postgresql
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=app
+      - DB_SSLMODE=disable
+      # Permits the line above. Without it the backend refuses to start, which
+      # is the point: a deployed environment that loses DB_SSLMODE must fail
+      # loudly rather than connect unencrypted. 
+      - ALLOW_INSECURE_DB=true
+      - FRONTEND_MODE=static
+      - FRONTEND_STATIC_PATH=/app/static
+      - AUTH_ENABLED=false
+    # compose.dev.yaml declared this and the base file did not, so `make dev`
+    # waited for a healthy database and `make prod` raced it: the backend opened
+    # its pool against a Postgres still starting up.
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    volumes:
+      - ./frontend/dist:/app/static:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  postgresql:
+    image: postgres:16-alpine
+    container_name: postgresql
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=app
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  postgresql-data:
+
+networks:
+  app-network:
+    driver: bridge

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "_comment": [
+      "Read-only commands only. Every entry here must be incapable of changing the repo,",
+      "the remote, or the machine, because these run with no prompt.",
+      "",
+      "Deliberately absent: any blanket 'Bash(gh api:*)'. Rules match by prefix, so that one",
+      "pattern would also allow 'gh api -X PATCH' and every other write. A specific read worth",
+      "allowing gets named in full, as the dependabot alerts one below is.",
+      "",
+      "Also absent: git add, commit, push, checkout, merge, and anything under 'gh pr merge' or",
+      "'gh release'. Those should prompt. The branch guard is a seatbelt, not a substitute."
+    ],
+    "allow": [
+      "Bash(node scripts/verify.mjs)",
+      "Bash(node scripts/verify.mjs --reuse-receipt)",
+      "Bash(node scripts/lint-plan.mjs *)",
+      "Bash(node scripts/preflight-versions.mjs*)",
+      "Bash(node scripts/check-docs.mjs)",
+      "Bash(node scripts/ship-scope.mjs)",
+      "Bash(node scripts/check-csv-coverage.mjs)",
+      "Bash(node scripts/check-em-dash.mjs)",
+      "Bash(node scripts/env-report.mjs)",
+      "Bash(node --test *)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch --show-current)",
+      "Bash(git rev-parse:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git ls-files:*)",
+      "Bash(gh auth status)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh api repos/superrcharge/signal-suite-public/dependabot/alerts:*)",
+      "Bash(npm outdated:*)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx vitest run:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["scripts/env-report.mjs"],
+            "timeout": 15,
+            "statusMessage": "Reading machine environment"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["scripts/branch-guard.mjs"],
+            "timeout": 15,
+            "statusMessage": "Checking branch"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["scripts/check-em-dash.mjs"],
+            "timeout": 15,
+            "statusMessage": "Checking style"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["scripts/verify-gate.mjs"],
+            "timeout": 30,
+            "statusMessage": "Checking verification"
+          }
+        ]
+      }
+    ]
+  }
+}
