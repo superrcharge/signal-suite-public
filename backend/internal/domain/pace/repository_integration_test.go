@@ -48,9 +48,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// A section that exists in every dev database (seeded by migration 036) and
+// A section that exists in every dev database (seeded by migration 037) and
 // whose rows this test clears before and after itself.
-const integrationSection = "st"
+const integrationSection = "spt"
 
 func clearSection(t *testing.T) {
 	t.Helper()
