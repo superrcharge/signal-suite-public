@@ -20,6 +20,7 @@
     "transport": { "export": "yes", "import": "yes", "template": "yes" },
     "radionet": { "export": "yes", "import": "yes", "template": "yes" },
     "platform": { "export": "yes", "import": "yes", "template": "yes" },
+    "organization": { "export": "yes", "import": "yes", "template": "yes" },
 
     "contract": {
       "export": "yes",
@@ -36,6 +37,17 @@
       "template": "no",
       "why": {
         "import": "A channel row is meaningless without a plan and a net that already exist. A CSV would bypass every cross-domain check the editor performs.",
+        "template": "No import, so a template would be a file that leads nowhere."
+      }
+    },
+
+    "operation": {
+      "export": "no",
+      "import": "no",
+      "template": "no",
+      "why": {
+        "export": "A participant row is meaningless without the operation and organization it joins, so a flat file of either table loses the relationship it exists to record.",
+        "import": "A check-in names an organization, waveforms and catalog records that must already exist, and a CSV would bypass every cross-domain check the editor performs.",
         "template": "No import, so a template would be a file that leads nowhere."
       }
     },

@@ -3,7 +3,7 @@
 //
 // The PostToolUse hook only sees files Claude writes. It cannot see a hand
 // edit, a commit pushed from the other machine, or an edit made in the GitHub
-// web UI. One incident hit exactly that gap: 8 em dashes were merged across five PRs
+// web UI. #108 hit exactly that gap: 8 em dashes were merged across five PRs
 // before any enforcement existed. This closes it for every author.
 //
 // Usage: node scripts/check-em-dash-ci.mjs <base-ref>

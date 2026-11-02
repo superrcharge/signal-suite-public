@@ -31,6 +31,42 @@ describe('FrequencyTable - radio', () => {
     expect(container.textContent).toContain('N/A');
   });
 
+  it('shows S- and C-band entries, one row per module', () => {
+    const { container } = render(
+      <FrequencyTable
+        terminalType="radio"
+        bands={[
+          { band: 'L', freq_min: 1350, freq_max: 1390, freq_unit: 'MHz' },
+          { band: 'S', freq_min: 2025, freq_max: 2150, freq_unit: 'MHz' },
+          { band: 'S', freq_min: 2200, freq_max: 2507, freq_unit: 'MHz' },
+          { band: 'C', freq_min: 4400, freq_max: 5000, freq_unit: 'MHz' },
+        ]}
+      />,
+    );
+    const text = container.textContent ?? '';
+    expect(text).toContain('2025–2150');
+    expect(text).toContain('2200–2507');
+    expect(text).toContain('4400–5000');
+    expect(text.indexOf('1350')).toBeLessThan(text.indexOf('2025'));
+    expect(text.indexOf('2507')).toBeLessThan(text.indexOf('4400'));
+  });
+
+  it('leaves out the bands a radio does not have', () => {
+    const { container, queryByText } = render(
+      <FrequencyTable terminalType="radio" bands={[{ band: 'VHF', freq_min: 30, freq_max: 225, freq_unit: 'MHz' }]} />,
+    );
+    expect(container.textContent).not.toContain('N/A');
+    expect(queryByText('HF')).toBeNull();
+    expect(queryByText('C')).toBeNull();
+  });
+
+  it('keeps an entry whose band is not in the list', () => {
+    const { container } = render(
+      <FrequencyTable terminalType="radio" bands={[{ band: 'SHF', freq_min: 7, freq_max: 8, freq_unit: 'GHz' }]} />,
+    );
+    expect(container.textContent).toContain('7–8');
+  });
+
   it('uses a single Frequency column, not RX/TX', () => {
     const { queryByText } = render(<FrequencyTable terminalType="radio" bands={[]} />);
     expect(queryByText('Frequency')).not.toBeNull();

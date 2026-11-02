@@ -38,7 +38,7 @@ const ACTIONLINT = 'github.com/rhysd/actionlint/cmd/actionlint@v1.7.7'
 
 // actionlint shells out to shellcheck and pyflakes for `run:` blocks *when it
 // finds them on PATH*, and silently skips them when it does not. That makes its
-// result depend on the machine: this check passed on a machine which has
+// result depend on the machine: this check passed on the Windows box, which has
 // neither, and failed on the GitHub runner, which has shellcheck - reporting
 // SC2086 quoting notes in a deploy workflow nobody had touched.
 //
@@ -254,33 +254,25 @@ function checkNodeVersions() {
 }
 
 function checkPostgresVersions() {
-  // The Postgres major is pinned in three places that must agree: the CI
-  // service container, the dev compose stack, and the self-hosted compose
-  // stack. A migration that passes CI can otherwise fail on the server people
-  // actually run.
   const ciPg = ciYml.match(/image:\s*postgres:(\d+)/)?.[1]
-  const pins = [['ci.yml', ciPg]]
-  for (const file of ['compose.yaml', 'compose.selfhost.yaml']) {
-    try {
-      pins.push([file, read(file).match(/image:\s*postgres:(\d+)/)?.[1]])
-    } catch {
-      // A compose file may legitimately be absent; only present ones are compared.
-    }
+  let composePg
+  try {
+    composePg = read('compose.selfhost.yaml').match(/image:\s*postgres:(\d+)/)?.[1]
+  } catch {
+    return { ok: true, detail: 'compose.selfhost.yaml not present, nothing to match' }
   }
-  const named = pins.filter(([, v]) => v)
-  if (named.length < 2) {
-    return { ok: true, detail: 'fewer than two postgres pins to compare' }
+  if (!ciPg || !composePg) {
+    return { ok: true, detail: 'no postgres pin to compare' }
   }
-  const versions = new Set(named.map(([, v]) => v))
-  if (versions.size > 1) {
+  if (ciPg !== composePg) {
     return {
       ok: false,
       detail:
-        named.map(([f, v]) => `${f} runs postgres:${v}`).join(', ') +
-        '.\nA migration that passes CI can then fail on the server people run.',
+        `CI tests against postgres:${ciPg} but compose.selfhost.yaml runs postgres:${composePg}.\n` +
+        'A migration that passes CI can then fail on the deployed server.',
     }
   }
-  return { ok: true, detail: `${named.map(([f]) => f).join(', ')} all on postgres ${ciPg}` }
+  return { ok: true, detail: `CI and compose.selfhost.yaml both on postgres ${ciPg}` }
 }
 
 function checkNoFloatingPins() {

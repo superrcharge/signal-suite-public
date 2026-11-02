@@ -27,6 +27,37 @@ type AuthUser interface {
 	HasRole(role string) bool
 }
 
+// The synthetic identity every request carries while auth is disabled
+// (ModeNone, the compose dev stack). It is the same user GET /users/me
+// answers with in that mode, so what the UI shows as "you" is also what a
+// write records as its actor and what an "only the poster" rule compares
+// against. Before it, a dev write stored a blank actor, and anything keyed
+// on the actor's id (resolving an RFI) could never match.
+const (
+	DevUserID    = "00000000-0000-0000-0000-000000000001"
+	DevUserEmail = "dev@localhost"
+	DevUserName  = "Dev Admin"
+)
+
+// devUser is DevUserID as an AuthUser: an admin, like the seed user.
+type devUser struct{}
+
+func (devUser) GetID() string            { return DevUserID }
+func (devUser) GetName() string          { return DevUserName }
+func (devUser) HasRole(role string) bool { return role == "admin" }
+
+// attachDevUser puts the synthetic dev identity in Fiber Locals, where
+// GetCurrentUser reads it. Only called when auth is disabled, and only when
+// nothing earlier in the chain attached a user: the domain handler tests run
+// with auth disabled and seed Locals with a real *user.User before the gate,
+// and overwriting it would turn their own-data checks into 403s.
+func attachDevUser(c fiber.Ctx) {
+	if GetCurrentUser(c) != nil {
+		return
+	}
+	c.Locals(UserLocalsKey, devUser{})
+}
+
 // UserSyncer creates or updates a local user record from a verified
 // JWT identity, returning the access-control-enriched representation.
 type UserSyncer interface {
@@ -47,7 +78,8 @@ type AuthMiddleware struct {
 }
 
 // NewAuthMiddleware constructs the middleware. cfg.Mode controls whether
-// verification runs; ModeNone makes RequireAuth a pass-through.
+// verification runs; ModeNone makes RequireAuth a pass-through that attaches
+// the synthetic dev identity (DevUserID) instead of a verified one.
 func NewAuthMiddleware(cfg *auth.Config, syncer UserSyncer) *AuthMiddleware {
 	return &AuthMiddleware{cfg: cfg, syncer: syncer}
 }
@@ -58,6 +90,7 @@ func NewAuthMiddleware(cfg *auth.Config, syncer UserSyncer) *AuthMiddleware {
 func (m *AuthMiddleware) RequireAuth() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if !m.cfg.Enabled() {
+			attachDevUser(c)
 			return c.Next()
 		}
 
@@ -75,6 +108,7 @@ func (m *AuthMiddleware) RequireAuth() fiber.Handler {
 func (m *AuthMiddleware) OptionalAuth() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if !m.cfg.Enabled() {
+			attachDevUser(c)
 			return c.Next()
 		}
 
@@ -93,6 +127,7 @@ func (m *AuthMiddleware) OptionalAuth() fiber.Handler {
 // (e.g. WebSocket upgrades) can short-circuit on failure.
 func (m *AuthMiddleware) Authenticate(c fiber.Ctx) error {
 	if !m.cfg.Enabled() {
+		attachDevUser(c)
 		return nil
 	}
 

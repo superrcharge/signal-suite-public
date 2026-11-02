@@ -1,15 +1,17 @@
 package dto
 
 type TransportResponse struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
-	Provider    string `json:"provider"`
-	Description string `json:"description"`
-	CreatedBy   string `json:"created_by"`
-	UpdatedBy   string `json:"updated_by"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	Provider     string `json:"provider"`
+	Description  string `json:"description"`
+	OwnedBy      string `json:"owned_by"`
+	OwnerCountry string `json:"owner_country"`
+	CreatedBy    string `json:"created_by"`
+	UpdatedBy    string `json:"updated_by"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 type CreateTransportResponse struct {

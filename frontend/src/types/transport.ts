@@ -43,6 +43,10 @@ export interface Transport {
   kind: TransportKind;
   provider: string;
   description: string;
+  /** Ultimate controlling parent of `provider`, e.g. Deutsche Telekom for T-Mobile US. */
+  owned_by: string;
+  /** Country the owner is headquartered in. */
+  owner_country: string;
   created_by: string;
   updated_by: string;
   created_at: string;
@@ -59,6 +63,8 @@ export interface CreateTransportRequest {
   kind?: TransportKind;
   provider?: string;
   description?: string;
+  owned_by?: string;
+  owner_country?: string;
 }
 
 export interface UpdateTransportRequest {
@@ -66,4 +72,6 @@ export interface UpdateTransportRequest {
   kind?: TransportKind;
   provider?: string;
   description?: string;
+  owned_by?: string;
+  owner_country?: string;
 }

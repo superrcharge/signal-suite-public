@@ -30,8 +30,13 @@ let cardState: { data: typeof card | undefined; isLoading: boolean; isError: boo
 // Closed mock: the page calls usePaceCard AND useSections, and a mock missing a
 // hook a rendered component calls fails at render time rather than as a clean
 // assertion failure.
+const paceCardCalls = vi.hoisted(() => [] as unknown[][]);
+
 vi.mock('@/services', () => ({
-  usePaceCard: () => cardState,
+  usePaceCard: (...args: unknown[]) => {
+    paceCardCalls.push(args);
+    return cardState;
+  },
   useSections: () => ({
     data: [{ key: 'asqd', label: 'A SQD', color: '#fff', pace_enabled: true }],
     isLoading: false,
@@ -162,5 +167,33 @@ describe('PacePrintPage', () => {
     await waitFor(() =>
       expect(document.querySelector('.pace-print-wrapper')).not.toBeNull(),
     );
+  });
+});
+
+describe('PacePrintPage theater', () => {
+  it('prints the card the URL names, says which in the bar, and keeps it in the reopen link', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    mockSearch.value = 'theater=oconus';
+    renderWithRoute(<PacePrintPage />, '/pace/asqd/print?theater=oconus');
+
+    expect(paceCardCalls[paceCardCalls.length - 1]).toEqual(['asqd', 'oconus']);
+    expect(screen.getByText(/A SQD · OCONUS/)).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Print / Save PDF' }).click();
+    await waitFor(() =>
+      expect(String(open.mock.calls[0]?.[0])).toBe('/pace/asqd/print?print=1&theater=oconus'),
+    );
+    open.mockRestore();
+  });
+
+  it('defaults to CONUS and leaves it out of the reopen link', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    mockSearch.value = '';
+    renderWithRoute(<PacePrintPage />, '/pace/asqd/print');
+
+    expect(paceCardCalls[paceCardCalls.length - 1]).toEqual(['asqd', 'conus']);
+    expect(screen.getByText(/A SQD · CONUS/)).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Print / Save PDF' }).click();
+    await waitFor(() => expect(String(open.mock.calls[0]?.[0])).toBe('/pace/asqd/print?print=1'));
+    open.mockRestore();
   });
 });

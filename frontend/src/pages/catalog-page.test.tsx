@@ -61,6 +61,7 @@ vi.mock('@/services', () => ({
   useUpdateSection: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSection: () => ({ mutate: vi.fn(), isPending: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   REASSIGN_TO_NONE: '__none__',
 }));
 
@@ -536,7 +537,7 @@ describe('CatalogPage facet sidebar', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// A term scoped to the other kind of equipment is held in the URL and
+// #233. A term scoped to the other kind of equipment is held in the URL and
 // correctly not applied, and both counters used to count it anyway - so the
 // buttons claimed a filter over a grid nothing had narrowed, with no chip to
 // switch it off because the tab does not draw that facet.

@@ -11,7 +11,7 @@ import (
 
 // The full column list, written out by hand. This literal IS the pin.
 var wantColumns = []string{
-	"section", "radio_type", "plan_label", "channel_number",
+	"section", "theater", "radio_type", "plan_label", "channel_number",
 	"net_name", "net_id", "net_radio_type",
 	"tx_freq", "rx_freq", "freq_unit", "is_overridden", "label_override",
 }
@@ -44,7 +44,7 @@ func card() *CommsCard {
 	return &CommsCard{
 		Plans: []*ChannelPlan{
 			{
-				Section: "asqd", RadioType: RadioJEM, Label: "JEM",
+				Section: "asqd", Theater: TheaterCONUS, RadioType: RadioJEM, Label: "JEM",
 				Assignments: []*ChannelAssignment{
 					{
 						ChannelNumber: 4, NetID: "n1",
@@ -101,7 +101,12 @@ func TestFlattenCard_UsesEffectiveFrequencies(t *testing.T) {
 func TestExportChannels(t *testing.T) {
 	svc := NewService(&MockRepository{
 		SectionExistsFunc: func(ctx context.Context, s string) (bool, error) { return s == "asqd", nil },
-		FindCardFunc:      func(ctx context.Context, s string) (*CommsCard, error) { return card(), nil },
+		FindCardFunc: func(ctx context.Context, s, theater string) (*CommsCard, error) {
+			if theater != TheaterCONUS {
+				return &CommsCard{Section: s, Theater: theater, Plans: []*ChannelPlan{}}, nil
+			}
+			return card(), nil
+		},
 	})
 
 	out, err := svc.ExportChannels(context.Background(), "asqd", nil)

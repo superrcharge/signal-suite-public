@@ -9,7 +9,7 @@ import { PANEL_SX } from './surface-sx';
  * One definition, for the same reason `PageBanner` is one component: this
  * markup existed five times - terminals and kits byte-identical, contracts
  * with the same props in a different key order and no interaction, users with
- * `mb: 3` and a label missing its `display: block`, and the dashboard with a
+ * `mb: 3` and a label missing its `display: block`, and the Stats page with a
  * private `StatPanel`/`Tile` pair. Four of the five had drifted somewhere,
  * and none of the drifts were decisions.
  *
@@ -48,7 +48,7 @@ export function StatStrip({ children, mb = 1.5, ariaLabel, sx }: {
 }
 
 /**
- * A cell's caption. Exported because the dashboard's tiles keep their own
+ * A cell's caption. Exported because the Stats page's tiles keep their own
  * grid layout - they are not a flex strip - but must not restate the type.
  */
 export function StatLabel({ children, color }: { children: ReactNode; color?: string }) {

@@ -108,6 +108,7 @@ func toPlanResponse(p *ChannelPlan) dto.PlanResponse {
 func toCardResponse(card *CommsCard) dto.CardResponse {
 	out := dto.CardResponse{
 		Section:    card.Section,
+		Theater:    card.Theater,
 		Highlights: []string{},
 		Plans:      make([]dto.PlanResponse, 0, len(ValidRadios)),
 	}

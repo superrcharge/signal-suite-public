@@ -6,6 +6,7 @@ type NetResponse struct {
 	Name        string `json:"name"`
 	NetID       string `json:"net_id"`
 	RadioType   string `json:"radio_type"`
+	Theater     string `json:"theater"`
 	TxFreq      string `json:"tx_freq"`
 	RxFreq      string `json:"rx_freq"`
 	FreqUnit    string `json:"freq_unit"`

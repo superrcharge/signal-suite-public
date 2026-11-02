@@ -31,6 +31,8 @@ internal/domain/user/
 ├── helpers_test.go      # Helper function tests
 ├── repository.go
 ├── repository_mock.go   # Mock for testing
+├── repository_integration_test.go  # Real Postgres, behind //go:build integration (terminal, pace, organization, user)
+├── golden_test.go       # CSV export pinned against fixed fixtures (terminal, kit, contract)
 ```
 
 ### Mock Repository Pattern

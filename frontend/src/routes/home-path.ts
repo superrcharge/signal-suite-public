@@ -1,25 +1,26 @@
 import type { Role } from '@/types/roles';
 
 /**
- * Where "home" is for a role.
+ * Where "home" is for a role: the Dashboard, for every role.
  *
- * Two places used to hardcode a destination the planner role must not be sent
- * to: the `/` redirect went to `/terminals`, and the not-found page's button
- * went to `/dashboard`. Both are hidden from a planner, so both were a bounce
- * into a page it has no nav entry for.
+ * The planner role used to be the exception. The `/` redirect went to
+ * `/terminals` and the not-found button to `/dashboard`, both hidden from a
+ * planner, so both were a bounce into a page it has no nav entry for. The
+ * Dashboard is the tile grid of the nav and shows each role only what its nav
+ * shows, so one destination now fits all of them.
  *
- * One function rather than a conditional in each, because a third dead-end is
- * likelier than a change to either of these two.
+ * Still one function rather than a constant in each place, because a role that
+ * needs a different front door is likelier than not.
  */
-export function homePathFor(role: Role | null): string {
-  return role === 'planner' ? '/pace' : '/terminals';
+export function homePathFor(_role: Role | null): string {
+  return '/dashboard';
 }
 
 /**
  * Where the not-found page's button goes. Separate from homePathFor because
- * "back to something useful" and "the app's front door" are only the same for
- * roles that can see the dashboard.
+ * "back to something useful" and "the app's front door" are different
+ * questions that happen to have the same answer today.
  */
-export function fallbackPathFor(role: Role | null): string {
-  return role === 'planner' ? '/pace' : '/dashboard';
+export function fallbackPathFor(_role: Role | null): string {
+  return '/dashboard';
 }

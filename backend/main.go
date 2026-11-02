@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"backend/config"
 	"backend/docs"
@@ -17,6 +18,8 @@ import (
 	"backend/internal/domain/contract"
 	"backend/internal/domain/equipment"
 	"backend/internal/domain/kit"
+	"backend/internal/domain/operation"
+	"backend/internal/domain/organization"
 	"backend/internal/domain/pace"
 	"backend/internal/domain/platform"
 	"backend/internal/domain/radionet"
@@ -29,12 +32,22 @@ import (
 	"backend/internal/infrastructure/database"
 	"backend/internal/middleware"
 	"backend/internal/shared/validator"
+	"backend/internal/trust"
 	"backend/migrations"
 
 	"github.com/gofiber/fiber/v3"
 )
 
 func main() {
+	// First, before anything can open a TLS connection: Go loads its trust
+	// store once, on first use. See internal/trust for the outage this
+	// closes.
+	if rep, err := trust.Prepare(os.TempDir()); err != nil {
+		log.Printf("warning: %v", err)
+	} else {
+		rep.Log(time.Now())
+	}
+
 	cfg := config.Load()
 
 	// The resolved values, not the configured intent. The incident behind it was about a
@@ -168,7 +181,8 @@ func main() {
 
 	equipment.RegisterRoutes(app, equipmentHandler, authMiddleware)
 
-	// Waveform library (global reference data - no audit, no blob)
+	// Waveform library (global reference data - no blob; audit is wired below
+	// with the other services)
 	waveformValidator := waveform.NewValidator()
 	waveformRepo := waveform.NewRepository(db)
 	waveformService := waveform.NewService(waveformRepo)
@@ -194,14 +208,41 @@ func main() {
 
 	transport.RegisterRoutes(app, transportHandler, authMiddleware)
 
-	// Platforms library (external comms platforms - airframes, ships, coalition
-	// assets - the columns of the joint compatibility matrix)
+	// Platforms library (external comms platforms - airframes, ships, ground
+	// stations - the columns of the joint compatibility matrix)
 	platformValidator := platform.NewValidator()
 	platformRepo := platform.NewRepository(db)
 	platformService := platform.NewService(platformRepo)
 	platformHandler := platform.NewHandler(platformService, platformValidator)
 
 	platform.RegisterRoutes(app, platformHandler, authMiddleware)
+
+	// Organizations library (the participants an operation checks in: service
+	// components, squadrons, partners). The section lister is wired here so a
+	// mapped squadron must exist; the usage side is wired once operations
+	// exist.
+	organizationValidator := organization.NewValidator()
+	organizationRepo := organization.NewRepository(db)
+	organizationService := organization.NewService(organizationRepo)
+	organizationHandler := organization.NewHandler(organizationService, organizationValidator)
+	organizationService.SetSectionLister(sectionService)
+
+	organization.RegisterRoutes(app, organizationHandler, authMiddleware)
+
+	// Operations: a named effort, and each organization's check-in to it.
+	operationValidator := operation.NewValidator()
+	operationRepo := operation.NewRepository(db)
+	operationService := operation.NewService(operationRepo)
+	operationHandler := operation.NewHandler(operationService, operationValidator)
+
+	// Wired both ways, through interfaces, so neither domain imports the other:
+	// a check-in must name a real organization and only declared waveforms, and
+	// the organization library refuses a delete that would orphan a check-in.
+	operationService.SetOrganizationLookup(organizationService)
+	operationService.SetWaveformLookup(waveformService)
+	organizationService.SetOrganizationUsage(operationService)
+
+	operation.RegisterRoutes(app, operationHandler, authMiddleware)
 
 	// Wired both ways, through interfaces, so neither domain imports the other:
 	// the waveform library refuses a delete that would strand an abbrev on an
@@ -270,6 +311,8 @@ func main() {
 	paceService.SetAudit(auditService)
 	transportService.SetAudit(auditService)
 	platformService.SetAudit(auditService)
+	organizationService.SetAudit(auditService)
+	operationService.SetAudit(auditService)
 	waveformService.SetAudit(auditService)
 
 	audit.RegisterRoutes(app, auditHandler, authMiddleware)
@@ -288,6 +331,8 @@ func main() {
 		Net:       netService,
 		Pace:      paceService,
 		Platform:  platformService,
+
+		Organization: organizationService,
 	})...)
 	csvbulk.RegisterRoutes(app, csvbulk.NewHandler(bulkRegistry, validator.New()), authMiddleware)
 

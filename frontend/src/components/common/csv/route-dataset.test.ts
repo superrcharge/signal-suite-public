@@ -8,6 +8,7 @@ import { datasetForPath, sectionForPath } from './route-dataset';
 const ROUTES: [path: string, search: string, dataset: string | undefined][] = [
   ['/', '', undefined],
   ['/dashboard', '', undefined],
+  ['/stats', '', undefined],
   ['/terminals', '', 'terminals'],
   ['/kits', '', 'kits'],
   ['/contracts', '', 'contracts'],
@@ -44,6 +45,10 @@ const ROUTES: [path: string, search: string, dataset: string | undefined][] = [
   ['/users', '', undefined],
   ['/audit', '', undefined],
   ['/settings', '', undefined],
+  // The organizations library is managed from a Settings tab, which is the only
+  // route about that dataset; the other tabs have no CSV of their own.
+  ['/settings', '?tab=organizations', 'organizations'],
+  ['/settings', '?tab=sections', undefined],
   ['/nowhere', '', undefined],
 ];
 

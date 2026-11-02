@@ -204,8 +204,8 @@ func TestAuditPageFiltersEveryRecordedResourceType(t *testing.T) {
 	// than "wrong value".
 	var stale []string
 	for rt := range listed {
-		if rt == "" {
-			continue // the "All resources" sentinel
+		if rt == "all" {
+			continue // the "All resources" sentinel; never sent to the API
 		}
 		if _, ok := emitted[rt]; !ok {
 			stale = append(stale, rt)

@@ -30,7 +30,7 @@ interface AuthContextValue {
   canWrite: boolean;
   /**
    * True when the user should see the Contracts surfaces at all: the sidebar
-   * group, the page-menu entry and the Dashboard panel. Admin and editor only.
+   * group, the page-menu entry and the Stats panel. Admin and editor only.
    *
    * This shapes NAVIGATION, like {@link isPlanner}, and authorizes nothing:
    * `GET /api/v1/contracts` and the contracts export stay open to every
@@ -42,6 +42,17 @@ interface AuthContextValue {
    * write. Additive, so a wider role satisfies it directly.
    */
   canSeeContracts: boolean;
+  /**
+   * True when the user should see the Terminals and Kits trackers at all: the
+   * page-menu entries, their Dashboard tiles, and the sidebar's Terminals,
+   * Kits and By Section groups. Admin and editor only, the roles that keep
+   * those records.
+   *
+   * Navigation only, like {@link canSeeContracts}: reads stay open to every
+   * authenticated role and `/terminals` still renders read-only by URL.
+   * Additive, so a wider role satisfies it directly.
+   */
+  canSeeTrackers: boolean;
   /**
    * True when the user can mutate the radio side of the catalog - waveforms,
    * and equipment whose `terminal_type` is `radio`. Admins and editors write
@@ -145,6 +156,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isAdmin: admin,
       canWrite: admin || editor,
       canSeeContracts: admin || editor,
+      canSeeTrackers: admin || editor,
       canWriteRadio: admin || editor || rto,
       canWritePace: admin || editor || rto || has('planner'),
       // Membership, minus the roles that grant a broader view. isPlanner

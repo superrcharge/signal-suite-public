@@ -103,7 +103,7 @@ Every realistic tag has a space in it, so deleting a tag from Settings was a no-
 | `columns` | comma-separated column keys | all, canonical order |
 
 **`models` accepts both spellings, deliberately.** The list endpoint spells it `model` and the
-dashboard family tiles deep-link `?model=mini,hp`, so an export URL copied from that habit
+Stats family tiles deep-link `?model=mini,hp`, so an export URL copied from that habit
 would have been silently dropped - an unrecognised query param is ignored, which yields a full
 export that *looks* filtered. Both are parsed and concatenated, so supplying both is additive
 rather than one winning. Do not "tidy up" the alias. Note this is the export endpoint only;
@@ -122,16 +122,23 @@ Eight sections and no terminals. Migration 006 inserts `asqd` through `fsqd` (ke
 e.g. `ASQD MINI 1`, `BSQD HORNET 2`. For a populated dev database run `scripts/seed-dev-assets.mjs`
 and `scripts/seed-dev-nets.mjs` against the running stack; they write through the API, not the migrations.
 
+## Who sees Terminals
+
+Terminals, Kits and By Section are offered only to admin and editor, on the `canSeeTrackers` flag (`admin || editor`, `contexts/auth-context.tsx`).
+The flag gates the Terminals entry in `NAV_ITEMS` (`components/layouts/nav-items.tsx`, so the header page menu and the Dashboard tiles drop it) and the sidebar's Terminals and Kits groups (`components/layouts/sidebar.tsx`).
+It is a decluttered view, not a boundary: the reads stay open to every authed user and the route answers by URL.
+See `dashboard.md`.
+
 ## Terminals page UI
 
 - **Stat strip:** live counts (Total / Available / ALERT / On Mission / Reserved / INOP). Clicking a stat filters the table. Labels are colored with the status color; counts are neutral. Sticky - stays pinned at the top while the terminal list scrolls (MainLayout content area is the scroll container). **Counts come from the backend `status_counts` map in `ListTerminalsResponse`** (a `GROUP BY status` query that runs across the full filtered set, independent of pagination) - not from filtering the current page slice. ALERT aggregate = `alert` + `alert-blue` + `alert-green`.
 - **Status badges:** per-status colors - Available green `#3fb950`, On Mission purple `#a371f7`, Reserved orange `#f0883e`, ALERT amber `#e3b341`, INOP red `#f85149`.
-- **Section filter** via `?sections=key1,key2` (comma-separated). Sidebar section items toggle - click to add, click active to remove, stack multiple. "All Terminals" or "All Sections" clears the filter. Backend `FindAll` accepts `[]string` and emits `section IN (...)` for multi. **Use `?sections=` (plural) everywhere** - dashboard, deep links, and sidebar all use the plural form; `?section=` (singular) is ignored.
+- **Section filter** via `?sections=key1,key2` (comma-separated). Sidebar section items toggle - click to add, click active to remove, stack multiple. "All Terminals" or "All Sections" clears the filter. Backend `FindAll` accepts `[]string` and emits `section IN (...)` for multi. **Use `?sections=` (plural) everywhere** - Stats, deep links, and sidebar all use the plural form; `?section=` (singular) is ignored.
 - **`ListTerminalsResponse` shape:** `{ terminals, total, page, total_pages, status_counts }`. `status_counts` is a `map[string]int` (Go) / `Record<string, number>` (TS) keyed by status value. Built by a separate `GROUP BY status` query in `FindAll` so it reflects the full filtered set regardless of page size.
 - **Variant filter** - see server-side model filter description in Constraints above. Sidebar has three collapsible family groups (Starshield, Paradigm, OneWeb); clicking a model navigates to `?model=<slug>` and highlights the active item.
 - **Columns:** tight-fit (`width: 1%` + `whiteSpace: nowrap`) except **Notes**, which absorbs remaining space with ellipsis truncation + hover Tooltip. Order: Name, Model, Kit / PIM #, Serial #, Section, Status, Assigned To, PoP Pinned to (conditional - see PoP pin section), Notes, Updated.
 - **Row order:** `ORDER BY name COLLATE natural_sort, id` - names sort with embedded numbers ordered numerically, so `ASQD MINI 2` precedes `ASQD MINI 10` instead of the plain-text `1, 10, 11, 2, 9`. The collation comes from migration `038_natural_sort_collation.sql` and is applied only in `ORDER BY`, never as a column collation: search is `name ILIKE ...` in the `WHERE` clause and the uniqueness rule is `UNIQUE btree (LOWER(name))`, both of which take the column's own collation and are deliberately untouched. The `, id` tiebreaker keeps the order total, which plain `LIMIT`/`OFFSET` pagination needs. The export query is separate (`FindForExport`) and carries the same clause, so the CSV matches the screen. The frontend's `compareNatural` in `@/utils` is the client-side twin for the pages that sort in JavaScript.
-- **`?model=` accepts comma-separated slugs** (e.g. `?model=mini,hp` from the dashboard family tiles) - hydration splits on commas so each toggle highlights.
+- **`?model=` accepts comma-separated slugs** (e.g. `?model=mini,hp` from the Stats family tiles) - hydration splits on commas so each toggle highlights.
 
 ### Editing surface
 

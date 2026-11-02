@@ -52,11 +52,11 @@ DELETE /api/v1/contracts/:id            → DeleteContract  [admin|editor]
 
 Contracts group in the sidebar is collapsible. Sub-items are dynamically loaded from `GET /api/v1/contracts/fiscal-years` via `useContractFiscalYears(enabled)`. The group renders only for `canSeeContracts` (admin and editor - contracts are internal), and the sidebar passes that same flag as `enabled`, so the query does not fire for a role whose Contracts group is not rendered. Clicking a FY navigates to `/contracts?fy=FY26`.
 
-This is navigation shaping, not authorization: the reads stay open to every role, `/contracts` still renders read-only by URL, and the export dataset stays listed for everyone. The header page-menu entry and the Dashboard panel follow the same flag. See `context/authz.md`.
+This is navigation shaping, not authorization: the reads stay open to every role, `/contracts` still renders read-only by URL, and the export dataset stays listed for everyone. The header page-menu entry, its Dashboard tile and the Stats panel follow the same flag. See `context/authz.md`.
 
-## Dashboard
+## Stats
 
-The dashboard stat strip (Total / Expiring / Caution / Watch) fetches `useContracts({ limit: 1 }, canSeeContracts)` - minimal data pull, counts are always returned regardless of limit. The panel renders only for `canSeeContracts`, and the second argument disables the query for everyone else, so no contracts request leaves a viewer's dashboard. Clicking any tile navigates to `/contracts`.
+The Stats page stat strip (Total / Expiring / Caution / Watch) fetches `useContracts({ limit: 1 }, canSeeContracts)` - minimal data pull, counts are always returned regardless of limit. The panel renders only for `canSeeContracts`, and the second argument disables the query for everyone else, so no contracts request leaves a viewer's Stats page. Clicking any tile navigates to `/contracts`.
 
 ## CSV export
 

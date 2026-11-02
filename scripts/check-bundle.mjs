@@ -3,7 +3,7 @@
  * Holds the built frontend bundle to one invariant: the emitted chunk import
  * graph is acyclic.
  *
- * This exists because of a shipped outage. An earlier release changed the module graph
+ * This exists because of a shipped outage. v1.8.2 changed the module graph
  * enough that rolldown stopped emitting its runtime as a dedicated chunk and
  * folded it into another one. `vendor` then imported a helper from that chunk
  * and called it at module scope while the same chunk depended on `vendor` in
@@ -52,8 +52,19 @@ const IMPORT_PATTERNS = [
   /(?:^|[;\s])import\s*["']([^"']+)["']/g, // side-effect import "x"
 ];
 
+/**
+ * Runs vite's own entry point under the node that is running this check.
+ *
+ * The first version spawned `npx` by bare name with no shell. On Windows the
+ * only thing on PATH is `npx.cmd`, which a shell-less spawn cannot resolve, so
+ * the check died with `spawnSync npx ENOENT` before building anything, and
+ * verify.mjs failed at this step on every run from that host. CI and the macOS
+ * checkout never saw it. Going through `process.execPath` involves no shell, no
+ * shim and no PATH lookup, so there is nothing left to differ by platform.
+ */
 function build() {
-  execFileSync('npx', ['vite', 'build'], { cwd: FRONTEND, stdio: 'pipe' });
+  const vite = join(FRONTEND, 'node_modules', 'vite', 'bin', 'vite.js');
+  execFileSync(process.execPath, [vite, 'build'], { cwd: FRONTEND, stdio: 'pipe' });
 }
 
 function chunkGraph() {

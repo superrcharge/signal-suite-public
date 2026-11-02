@@ -32,7 +32,7 @@ There are no DevOps pattern files. The real definitions are the code itself: `.g
 - Set up logging aggregation and search
 - Configure metrics collection and dashboards
 - Implement alerting and on-call routing
-- Create runbooks for common incidents
+- Write up common incidents and their fixes
 - Monitor SLIs/SLOs
 
 ### Security
@@ -76,10 +76,10 @@ Before starting any task:
 
 | Job | Steps |
 |---|---|
-| `preflight` | `scripts/preflight-versions.mjs`, `scripts/check-docs.mjs`, `scripts/check-ui-tokens.mjs`: pins, prose and UI tokens agree before anything compiles |
+| `preflight` | `scripts/preflight-versions.mjs`, `scripts/check-docs.mjs`, `scripts/check-ui-tokens.mjs`. Compiles nothing; runs alongside the others rather than gating them, and is not a required check on `main` |
 | `backend` | golangci-lint, `go build`, unit tests, goose migrations, integration tests against PostgreSQL |
 | `frontend` | ESLint, `tsc --noEmit`, Vitest, `npm audit --audit-level=high` |
-| `scripts` | `node --test` over `scripts/lib/`, the em dash detector's own unit tests |
+| `scripts` | `node --test` over `scripts/lib/`, the em dash detector's own unit tests, plus `scripts/check-csv-coverage.mjs` |
 | `style` | em dash check on added lines (`scripts/check-em-dash-ci.mjs`). Pull requests only |
 | `security-scan` | Trivy filesystem scan (HIGH/CRITICAL fail the build), govulncheck |
 
@@ -124,7 +124,7 @@ Standing requirements for any change to these workflows:
 - Metrics: latency, throughput, errors, saturation
 - Logs: structured, searchable, retained appropriately
 - Traces: distributed tracing for request flow
-- Alerts: actionable, with runbooks linked
+- Alerts: actionable, with the fix steps linked
 
 ## Review Checklists
 

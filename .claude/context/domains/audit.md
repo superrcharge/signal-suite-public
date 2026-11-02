@@ -16,7 +16,7 @@ Service layer emits events via `contracts.AuditRecorder` (in `shared/contracts/a
 
 ## Events captured
 
-Twelve domains record. `audit` itself does not, being the recorder.
+Fourteen domains record. `audit` itself does not, being the recorder.
 
 | resource_type | Domain package | Actions | Changes payload |
 |---|---|---|---|
@@ -26,9 +26,12 @@ Twelve domains record. `audit` itself does not, being the recorder.
 | `contract` | `contract` | create, update, delete | update diffs title, company, POC name/email/phone, POP start/end, execution quarter, fiscal year, notes, logform number/URL. Dates render as `YYYY-MM-DD`, not RFC3339, so a one-day move stays readable |
 | `equipment` | `equipment` | create, update, delete | update diffs nomenclature, nickname, one-liner, doc number, photo URL, make, terminal type, operational mode. The `data` spec sheet is recorded as moved-or-not rather than structurally diffed - dozens of nested keys belong in the datasheet view, not a one-line entry |
 | `waveform` | `waveform` | create, update, delete | update diffs abbrev, name, description |
-| `service` | `satcomservice` | create, update, delete | update diffs abbrev, name, description |
-| `transport` | `transport` | create, update, delete | update diffs name, kind, provider, description |
-| `platform` | `platform` | create, update, delete | update diffs designation, popular name, category, kind, operator, notes; the two lists (`waveform_abbrevs`, `equipment_ids`) are recorded joined, so the entry reads `L16 -> L16, MADL` rather than two arrays |
+| `service` | `satcomservice` | create, update, delete | update diffs abbrev, name, description, owned_by, owner_country |
+| `transport` | `transport` | create, update, delete | update diffs name, kind, provider, owned_by, owner_country, description |
+| `platform` | `platform` | create, update, delete | update diffs designation, popular name, category, type, notes; the three lists (`category`, `waveform_abbrevs`, `equipment_ids`) are recorded joined, so the entry reads `L16 -> L16, MADL` rather than two arrays |
+| `organization` | `organization` | create, update, delete | `resource_id` is the slug key, not a UUID. Update diffs name, short label, branch, color, section key, notes; an update that changes nothing records no event |
+| `operation` | `operation` | create, update, delete | update diffs name, acronym, status, start date, end date, notes; dates render as `YYYY-MM-DD`; saving the phase list, the location list or one phase's plan records `phases`, `sites` or `phase_plan` as `{old, new}` names rather than ids; an update that changes nothing records no event |
+| `operation_participant` | `operation` | create, update, delete | `resource_name` is `<operation> - <organization>`, the organization being the library one or the ad hoc ("Other") name. Update diffs the five lists (`platform_ids`, `equipment_ids`, `waveform_abbrevs`, `service_abbrevs`, `transport_ids`, recorded joined) and the contact fields and notes, plus `asset_phases`, naming only the assets whose phase marks moved; a PUT that changes nothing records no event |
 | `net` | `radionet` | create, update, delete | update diffs net fields |
 | `pace_section` | `pace` | update | diff of the card |
 | `user` | `user` | role_change | `{ role: {old, new} }` |
@@ -56,4 +59,4 @@ The last one is cross-language on purpose. The page's Resource dropdown once lis
 
 `GET /api/v1/audit` with optional filters: `resource_type`, `resource_id`, `actor_id`, `action`, `since`, `until` (both RFC3339). Page-based pagination (default 50, max 200). Admin-only.
 
-**Frontend:** `/audit` route with Resource / Action select filters, expandable rows for per-field diff rendered as `FIELD old → new` lines. `RESOURCE_TYPES` in `pages/audit-page.tsx` is the filter list the test above holds to the backend. `ResourceTypeChip` renders underscores as spaces so `pace_section` reads "Pace section" - `textTransform: capitalize` only touches the first letter, so the raw literal used to leak through. Reachable via the admin-only "Audit Log" nav entry (direct access) or the Audit Log panel in Settings.
+**Frontend:** `AuditLog` in `pages/audit-page.tsx` - Resource / Action select filters, expandable rows for per-field diff rendered as `FIELD old → new` lines, and paging - is the one implementation, and its one home is the Settings page's Audit log tab (`/settings?tab=audit`, `isAdmin`). `/audit` is only a redirect there, kept so old bookmarks and links to `/audit` keep working, and the page picker has no Audit Log row. The component stays at that path, though it renders no page of its own, because `RESOURCE_TYPES` in that file is the filter list the test above reads by path and holds to the backend. Filter state is local, never in the URL. `ResourceTypeChip` renders underscores as spaces so `pace_section` reads "Pace section" - `textTransform: capitalize` only touches the first letter, so the raw literal used to leak through.

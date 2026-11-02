@@ -19,6 +19,7 @@ import (
 	"backend/internal/domain/contract"
 	"backend/internal/domain/equipment"
 	"backend/internal/domain/kit"
+	"backend/internal/domain/organization"
 	"backend/internal/domain/pace"
 	"backend/internal/domain/platform"
 	"backend/internal/domain/radionet"
@@ -48,6 +49,7 @@ func All() []Domain {
 		{Resource: "equipment", Columns: equipment.CSVColumns(), Import: true},
 		{Resource: "kits", Columns: kit.CSVColumns(), Import: true},
 		{Resource: "nets", Columns: radionet.CSVColumns(), Import: true},
+		{Resource: "organizations", Columns: organization.CSVColumns(), Import: true},
 		{Resource: "pace-channels", Columns: pace.CSVColumns(), Import: false},
 		{Resource: "platforms", Columns: platform.CSVColumns(), Import: true},
 		{Resource: "services", Columns: satcomservice.CSVColumns(), Import: true},

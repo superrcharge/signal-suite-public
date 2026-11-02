@@ -35,6 +35,11 @@ var (
 		Message: "radio must be jem or mpu5",
 		Status:  http.StatusBadRequest,
 	}
+	ErrInvalidTheater = &Error{
+		Code:    "PACE_INVALID_THEATER",
+		Message: "theater must be conus or oconus",
+		Status:  http.StatusBadRequest,
+	}
 	ErrChannelOutOfRange = &Error{
 		Code:    "PACE_CHANNEL_OUT_OF_RANGE",
 		Message: "channel number is outside the plan's channel count",
@@ -68,6 +73,11 @@ var (
 		Message: "a net was assigned to a radio it is not carried by",
 		Status:  http.StatusBadRequest,
 	}
+	ErrNetWrongTheater = &Error{
+		Code:    "PACE_NET_WRONG_THEATER",
+		Message: "a net was assigned to a card outside its theater",
+		Status:  http.StatusBadRequest,
+	}
 	// The tier checks. Every 400 in this domain is a coded error declared here;
 	// a bare status renders as INTERNAL_ERROR through the shared envelope.
 	ErrInvalidTierSource = &Error{
@@ -93,6 +103,28 @@ var (
 	ErrInvalidDate = &Error{
 		Code:    "PACE_INVALID_DATE",
 		Message: "effective date must be YYYY-MM-DD",
+		Status:  http.StatusBadRequest,
+	}
+	// Emblem errors are coded for the same reason as every 400 above: a bare
+	// errors.New renders as "internal server error" whatever status it carries.
+	ErrEmblemStorageNotConfigured = &Error{
+		Code:    "PACE_EMBLEM_STORAGE_NOT_CONFIGURED",
+		Message: "emblem storage is not configured on this server",
+		Status:  http.StatusNotImplemented,
+	}
+	ErrNoEmblem = &Error{
+		Code:    "PACE_NO_EMBLEM",
+		Message: "this squadron has no emblem",
+		Status:  http.StatusNotFound,
+	}
+	ErrEmblemFieldRequired = &Error{
+		Code:    "PACE_EMBLEM_REQUIRED",
+		Message: "no emblem file was sent",
+		Status:  http.StatusBadRequest,
+	}
+	ErrEmblemUnsupportedType = &Error{
+		Code:    "PACE_EMBLEM_UNSUPPORTED_TYPE",
+		Message: "unsupported image type; use JPEG, PNG, or WebP",
 		Status:  http.StatusBadRequest,
 	}
 	ErrPaceInternalError = &Error{

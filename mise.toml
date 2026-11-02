@@ -4,7 +4,7 @@
 # `mise run <task>`. Delete this file if you prefer Make-only workflows.
 
 [tools]
-go = "1.26.8"   # keep equal to backend/go.mod; preflight-versions.mjs owns that number
+go = "1.26.10"   # keep equal to backend/go.mod; preflight-versions.mjs owns that number
 node = "26"
 
 [tasks.dev]

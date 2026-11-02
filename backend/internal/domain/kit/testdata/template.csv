@@ -1,5 +1,5 @@
 # REQUIRED: name (case-insensitive unique) and type. Everything else is optional.
-# Delete every # line and the EXAMPLE rows. Keep the header row below.
+# Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.
 # Type: remote | ifk | atk
 # Status: available | alert | alert-blue | alert-green | on-mission | reserved | inop
 # Networks (BLACK, SECRET, TS): true | false  (blank = false)

@@ -32,35 +32,30 @@ import FileUploadIcon from '@mui/icons-material/FileUpload';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SatelliteDishIcon from '@mui/icons-material/SatelliteAlt';
 import RouterIcon from '@mui/icons-material/Router';
-import SettingsInputAntennaIcon from '@mui/icons-material/SettingsInputAntenna';
+import { PaceIcon } from '@/components/common/pace-icon';
+import GraphicEqIcon from '@mui/icons-material/GraphicEq';
+import CellTowerIcon from '@mui/icons-material/CellTower';
+import CableIcon from '@mui/icons-material/Cable';
+import FlightIcon from '@mui/icons-material/Flight';
 import { useNavigate } from 'react-router';
 
 import { useAuth } from '@/contexts';
 import { HELP_GROUPS, type HelpTopic } from '@/help/help-content';
+import { queryWords, searchTopics, type MatchedIn } from '@/help/help-search';
 import { ROLE_OPTIONS } from '@/types/role-meta';
-import { RoleBadge } from '@/components/common';
+import { HighlightText, RoleBadge } from '@/components/common';
+
+export type { MatchedIn };
 
 interface HelpDialogProps {
   onClose: () => void;
 }
 
-function matchesSearch(topic: HelpTopic, term: string): boolean {
-  if (term === '') return true;
-  const haystack = [
-    topic.question,
-    // Resolved through specFor, not joined raw. A tokenised step is stored as
-    // "@share", so searching "import and export" would have stopped matching
-    // the moment text steps became icons - silently, since keywords sometimes
-    // cover for it. Search is this dialog's primary affordance; it must see the
-    // control's real name.
-    ...(topic.steps ?? []).map((step) => specFor(step).name),
-    topic.note ?? '',
-    ...(topic.keywords ?? []),
-  ]
-    .join(' ')
-    .toLowerCase();
-  return haystack.includes(term);
-}
+// The search itself lives in help/help-search.ts: by words, not by the whole
+// typed phrase, so "how to add a net" finds "How do I add a net?". Steps are
+// searched through `specFor(step).name`, never the raw "@share" token - a
+// tokenised step must stay findable by the words on the control it draws.
+// Search is this dialog's primary affordance; that failure would be silent.
 
 /**
  * Steps that name an icon-only control render the icon itself.
@@ -140,7 +135,15 @@ const STEP_SPECS: Record<string, StepSpec> = {
   // Rows in the + menu, each with its own domain icon.
   '@add-terminal': { kind: 'menu', icon: <SatelliteDishIcon sx={{ fontSize: 15 }} />, label: 'Add Terminal', name: 'Add Terminal' },
   '@add-kit': { kind: 'menu', icon: <RouterIcon sx={{ fontSize: 15 }} />, label: 'Add Kit', name: 'Add Kit' },
-  '@add-net': { kind: 'menu', icon: <SettingsInputAntennaIcon sx={{ fontSize: 15 }} />, label: 'Add Net', name: 'Add Net' },
+  '@add-net': { kind: 'menu', icon: <PaceIcon sx={{ fontSize: 15 }} />, label: 'Add Net', name: 'Add Net' },
+  // The Comms Library rows, below a divider in the menu. Same glyphs as
+  // header.tsx's LIBRARY_ADD, in the same order.
+  '@add-waveform': { kind: 'menu', icon: <GraphicEqIcon sx={{ fontSize: 15 }} />, label: 'Add Waveform', name: 'Add Waveform' },
+  '@add-service': { kind: 'menu', icon: <CellTowerIcon sx={{ fontSize: 15 }} />, label: 'Add Service', name: 'Add Service' },
+  '@add-transport': { kind: 'menu', icon: <CableIcon sx={{ fontSize: 15 }} />, label: 'Add Transport', name: 'Add Transport' },
+  '@add-platform': { kind: 'menu', icon: <FlightIcon sx={{ fontSize: 15 }} />, label: 'Add Platform', name: 'Add Platform' },
+  // No '@add-organization': organizations are added from the Join Operation
+  // wizard or the Settings page's Organizations tab, so the `+` has no row.
 };
 
 /**
@@ -149,6 +152,8 @@ const STEP_SPECS: Record<string, StepSpec> = {
  * follow with the literal label in it.
  */
 const BUTTON_STEPS = new Set([
+  'CONUS',
+  'OCONUS',
   'Save',
   'Save Section',
   'Save Changes',
@@ -159,11 +164,29 @@ const BUTTON_STEPS = new Set([
   'Add Terminal',
   'Add Kit',
   'Add Net',
+  'Add Operation',
   'Create',
   'Edit',
   'Upload Photo',
+  'Remove photo',
   'Move terminals & delete',
   'Take me there',
+  'Add tag',
+  'ALL',
+  'Both',
+  'Hide empty rows',
+  'Hide Preview',
+  // The catalog's compatibility matrix tab in the Equipment Catalog banner.
+  'Compatibility',
+  // The operation page's view switch: the tab per unit, the capability grid,
+  // or the phase picture. (No apostrophes in comments here: the help test
+  // reads this list out of the source by its quotes.)
+  'Loadout',
+  'Matrix',
+  'Web',
+  'Remove',
+  'Choose file',
+  'Copy report',
 
   // The library and editor add buttons, which carry a literal leading "+".
   // Every one of these was a live step rendering as plain words, including
@@ -171,10 +194,37 @@ const BUTTON_STEPS = new Set([
   // `help-content.test.ts` now fails any step starting with "+ " that is
   // missing here, because this list is the kind that only grows.
   '+ SATCOM',
+  // The dashed buttons that open the add form of a library, which stays folded
+  // away until one is pressed unless the library is empty.
+  '+ Add a waveform',
+  '+ Add a service',
+  '+ Add a transport',
+  '+ Add a platform',
   '+ Add to Waveform Library',
   '+ Add to Service Library',
   '+ Add to Transport Library',
   '+ Add to Platform Library',
+  // The operation page and its Join Operation wizard: Participants in the
+  // banner, Join Operation on the Participants popup and on an empty Loadout
+  // view, Join in the wizard, and its step 1 rows for an organization outside
+  // the library.
+  'Join Operation',
+  'Participants',
+  'Join',
+  'Other',
+  'Add to library',
+  // The RFI board: RFIs in the operation banner, Post RFI in its popup, then
+  // Reply and Resolve on a thread.
+  'RFIs',
+  'Post RFI',
+  'Reply',
+  'Resolve',
+  // Tabs on the Settings page, which are buttons in the tab strip.
+  'Tags',
+  'Organizations',
+  'Audit log',
+  'Import/Export',
+  'Export',
 ]);
 
 function specFor(step: string): StepSpec {
@@ -216,16 +266,14 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
 
-  const term = search.trim().toLowerCase();
-  const searching = term !== '';
+  // The words the search matched on, which are also what gets marked. A
+  // query of nothing but stop words ("how do i") has none, and is no search.
+  const terms = useMemo(() => queryWords(search), [search]);
+  const searching = terms.length > 0;
 
   const visibleGroups = useMemo(
-    () =>
-      HELP_GROUPS.map((group) => ({
-        ...group,
-        topics: searching ? group.topics.filter((topic) => matchesSearch(topic, term)) : group.topics,
-      })).filter((group) => group.topics.length > 0),
-    [term, searching],
+    () => searchTopics(HELP_GROUPS, search, (step) => specFor(step).name),
+    [search],
   );
 
   const toggleGroup = (id: string) => {
@@ -258,7 +306,24 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   };
 
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth fullScreen={fullScreen}>
+    <Dialog
+      open
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      fullScreen={fullScreen}
+      // Anchored near the top rather than centred. The list under the search
+      // box changes height on every keystroke, and MUI's default centring
+      // re-centres the paper each time, so the title and the box the reader
+      // is typing into bounced up and down with the results. With the paper
+      // held at the top, only its bottom edge moves, and a long list grows
+      // downward into the page instead of pushing the top up. The paper's
+      // own max height (the default calc(100% - 64px)) still caps it, so a
+      // very long list scrolls inside the dialog as before. Full-screen
+      // (phone width) is unaffected: there is nothing to centre.
+      sx={{ '& .MuiDialog-container': { alignItems: 'flex-start' } }}
+      slotProps={{ paper: { sx: fullScreen ? undefined : { mt: '5vh' } } }}
+    >
       {/* "Need help?" - and the reasoning here inverted once the button lost
           its words. This deliberately avoided saying "I need help!" a second
           time while the control was a labelled pill, because a dialog opening
@@ -318,11 +383,11 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
 
         {visibleGroups.length === 0 && (
           <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            Nothing matches that. Try a shorter word.
+            Nothing matches those words. Try another word for it.
           </Typography>
         )}
 
-        {visibleGroups.map((group) => {
+        {visibleGroups.map(({ group, topics }) => {
           const expanded = searching || expandedGroups.has(group.id);
           return (
             <Accordion
@@ -350,10 +415,18 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
                 </Typography>
               </AccordionSummary>
               <AccordionDetails sx={{ display: 'block', p: 0 }}>
-                {group.topics.map((topic) => (
+                {topics.map(({ topic, matchedIn }) => (
+                  // NOT opened by searching, unlike the group above it. That
+                  // was tried: a broad term opened eight or nine answers at
+                  // once and the list stopped being a list. A hit in a field
+                  // the collapsed row does not draw is named by the caption
+                  // beside the question instead, and the marks inside appear
+                  // when the reader opens the topic.
                   <TopicRow
                     key={topic.id}
                     topic={topic}
+                    terms={terms}
+                    matchedIn={matchedIn}
                     expanded={expandedTopics.has(topic.id)}
                     onToggle={() => toggleTopic(topic.id)}
                     onNavigate={goToRoute}
@@ -368,14 +441,24 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   );
 }
 
+/** What the row says when the search hit is not in the question it shows. */
+const MATCH_CAPTION: Record<Exclude<MatchedIn, 'question'>, string> = {
+  steps: 'matched in the steps',
+  note: 'matched in the note',
+  keywords: 'matched a keyword',
+};
+
 interface TopicRowProps {
   topic: HelpTopic;
+  /** The search words, or [] when the box is empty or holds only stop words. */
+  terms: string[];
+  matchedIn: MatchedIn;
   expanded: boolean;
   onToggle: () => void;
   onNavigate: (route: string) => void;
 }
 
-function TopicRow({ topic, expanded, onToggle, onNavigate }: TopicRowProps) {
+function TopicRow({ topic, terms, matchedIn, expanded, onToggle, onNavigate }: TopicRowProps) {
   const auth = useAuth();
   const showButton = topic.route !== undefined && gatePasses(topic.gate, auth);
 
@@ -391,7 +474,20 @@ function TopicRow({ topic, expanded, onToggle, onNavigate }: TopicRowProps) {
       {/* Same token as the step separator chevrons below, so the two kinds of
           "not the thing you are reading" agree. See the group summary above. */}
       <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'text.disabled' }} />}>
-        <Typography variant="body2">{topic.question}</Typography>
+        <Typography variant="body2">
+          <HighlightText text={topic.question} terms={terms} />
+          {/* The question is the only searched field a collapsed row draws.
+              A topic that matched in its steps, its note or its keywords
+              would otherwise sit in the list with nothing marked and look
+              like a false positive. Say where the hit is instead; opening the
+              topic shows the mark for the first two, and keywords are never
+              drawn at all. */}
+          {matchedIn !== 'question' && (
+            <Typography component="span" variant="caption" sx={{ color: 'text.disabled', ml: 1 }}>
+              {MATCH_CAPTION[matchedIn]}
+            </Typography>
+          )}
+        </Typography>
       </AccordionSummary>
       <AccordionDetails>
         {topic.steps && (
@@ -434,7 +530,7 @@ function TopicRow({ topic, expanded, onToggle, onNavigate }: TopicRowProps) {
                       }}
                     >
                       {spec.icon}
-                      {spec.label}
+                      {spec.label === undefined ? null : <HighlightText text={spec.label} terms={terms} />}
                     </Box>
                   ) : (
                     // Menu rows and plain words both render unboxed. A menu row
@@ -453,7 +549,7 @@ function TopicRow({ topic, expanded, onToggle, onNavigate }: TopicRowProps) {
                       }}
                     >
                       {spec.icon}
-                      {spec.label}
+                      {spec.label === undefined ? null : <HighlightText text={spec.label} terms={terms} />}
                     </Box>
                   )}
                 </Box>
@@ -492,7 +588,7 @@ function TopicRow({ topic, expanded, onToggle, onNavigate }: TopicRowProps) {
                 fontStyle: topic.tone === 'caution' ? 'italic' : 'normal',
               }}
             >
-              {topic.note}
+              <HighlightText text={topic.note} terms={terms} />
             </Typography>
           </Box>
         )}

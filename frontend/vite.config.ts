@@ -7,15 +7,16 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src'),
+      '@': resolve(import.meta.dirname, './src'),
     },
   },
   server: {
     port: 5173,
     host: '0.0.0.0', // Allow connections from Docker network
     allowedHosts: ['frontend', 'localhost', 'app'], // Allow Docker service hostnames
-    hmr: {
-      // HMR WebSocket connects directly to Vite, bypassing OAuth2-Proxy and backend
+    ws: {
+      // HMR WebSocket connects directly to Vite, bypassing OAuth2-Proxy and backend.
+      // Vite 8 moved these off `server.hmr`, which still works but warns on every start.
       host: 'localhost',
       clientPort: 5173,
     },
@@ -31,7 +32,7 @@ export default defineConfig({
     // Three groups used to force react, @mui and @tanstack into named chunks.
     // That grouping decides where the LIBRARY code goes and says nothing about
     // where rolldown puts its own runtime helpers, and the two can disagree: on
-    // In an earlier release the graph shifted enough that the runtime stopped being emitted as
+    // v1.8.2 the graph shifted enough that the runtime stopped being emitted as
     // its own chunk and was folded into the auto-generated `auth-service` chunk
     // instead. `vendor` then imported a helper from `auth-service` and called it
     // at module scope, while `auth-service` depended on `vendor` in turn, so the

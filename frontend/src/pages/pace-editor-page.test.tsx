@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { fireEvent } from '@testing-library/react';
+import { useLocation } from 'react-router';
 
 import { renderWithRoute, screen, within } from '@/test/utils';
 import { PaceEditorPage } from './pace-editor-page';
@@ -41,15 +42,48 @@ const card = {
 };
 
 const nets = [
-  { id: 'jem1', name: 'JEM NET', net_id: 'J01', radio_type: 'jem', tx_freq: '30.5', rx_freq: '30.5', freq_unit: 'MHz', roip: false, description: '', notes: '', created_by: '', updated_by: '', created_at: '', updated_at: '' },
-  { id: 'mpu1', name: 'MPU5 NET', net_id: 'W01', radio_type: 'mpu5', tx_freq: '1.4', rx_freq: '1.4', freq_unit: 'GHz', roip: false, description: '', notes: '', created_by: '', updated_by: '', created_at: '', updated_at: '' },
-  { id: 'both1', name: 'SHARED NET', net_id: 'B01', radio_type: 'both', tx_freq: '243', rx_freq: '243', freq_unit: 'MHz', roip: false, description: '', notes: '', created_by: '', updated_by: '', created_at: '', updated_at: '' },
+  { id: 'jem1', name: 'JEM NET', net_id: 'J01', radio_type: 'jem', theater: 'conus', tx_freq: '30.5', rx_freq: '30.5', freq_unit: 'MHz', roip: false, description: '', notes: '', created_by: '', updated_by: '', created_at: '', updated_at: '' },
+  { id: 'mpu1', name: 'MPU5 NET', net_id: 'W01', radio_type: 'mpu5', theater: 'conus', tx_freq: '1.4', rx_freq: '1.4', freq_unit: 'GHz', roip: false, description: '', notes: '', created_by: '', updated_by: '', created_at: '', updated_at: '' },
+  { id: 'both1', name: 'SHARED NET', net_id: 'B01', radio_type: 'both', theater: 'both', tx_freq: '243', rx_freq: '243', freq_unit: 'MHz', roip: false, description: '', notes: '', created_by: '', updated_by: '', created_at: '', updated_at: '' },
 ];
 
 // One stable spy, not a fresh vi.fn() per render: the save payload is the whole
 // point of most of these tests, and a per-call spy records the call somewhere
 // the test can never see it.
 const saveMutate = vi.fn();
+const uploadEmblemMutate = vi.fn();
+
+// jsdom has no canvas, so the real crop modal cannot produce a file here. This
+// stand-in records the props it was opened with and hands back a fixed file,
+// which is enough to show the page crops before it uploads. The modal itself
+// is tested in photo-crop-modal.test.tsx.
+const CROPPED = new File(['cropped'], 'cropped.png', { type: 'image/png' });
+vi.mock('@/components/common', async () => ({
+  ...(await vi.importActual('@/components/common')),
+  PhotoCropModal: (props: {
+    title?: string;
+    aspect?: number;
+    cropShape?: string;
+    allowFullImage?: boolean;
+    background?: string | null;
+    fillOptions?: boolean;
+    onConfirm: (f: File) => void;
+    onClose: () => void;
+  }) => (
+    <div
+      role="dialog"
+      aria-label={props.title}
+      data-aspect={props.aspect}
+      data-shape={props.cropShape}
+      data-full={String(props.allowFullImage)}
+      data-background={String(props.background)}
+      data-fill-options={String(props.fillOptions)}
+    >
+      <button onClick={() => props.onConfirm(CROPPED)}>Apply Crop</button>
+      <button onClick={props.onClose}>Cancel</button>
+    </div>
+  ),
+}));
 
 /** The payload handleSave actually sent. */
 function savedRequest(): SavePaceCardRequest {
@@ -84,12 +118,21 @@ const RADIO = { id: 'prc-158', nomenclature: 'AN/PRC-158', nickname: 'Falcon', t
 let equipmentListState: { data: { equipment: unknown[]; total: number }; isLoading: boolean };
 let equipmentItemState: { data: unknown; isLoading: boolean };
 
+// Records what the page asked for, so a switch can be seen to re-request.
+const paceCardCalls = vi.hoisted(() => [] as unknown[][]);
+
 vi.mock('@/services', () => ({
-  usePaceCard: () => cardState,
+  usePaceCard: (...args: unknown[]) => {
+    paceCardCalls.push(args);
+    return cardState;
+  },
   useSavePaceCard: () => ({ mutateAsync: saveMutate, isPending: false }),
-  useUploadPaceEmblem: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUploadPaceEmblem: () => ({ mutateAsync: uploadEmblemMutate, isPending: false }),
   useDeletePaceEmblem: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useNets: () => netsState,
+  // The header's Add Net drawer mounts on the click and calls these two.
+  useCreateNet: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateNet: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSections: () => ({ data: [{ key: 'asqd', label: 'A SQD', color: '#fff', pace_enabled: true }], isLoading: false }),
   useTerminals: () => ({ data: undefined, isLoading: false }),
   useKits: () => ({ data: undefined, isLoading: false }),
@@ -108,6 +151,7 @@ vi.mock('@/services', () => ({
   useUpdateSection: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSection: () => ({ mutate: vi.fn(), isPending: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   REASSIGN_TO_NONE: '__none__',
 }));
 
@@ -460,17 +504,26 @@ describe('PaceEditorPage', () => {
     // Add Net is now on every route, so the three Add buttons read as one
     // cluster instead of one that comes and goes with the page. It is here too.
     //
-    // What this route still does not get is the /nets/:section?drawer=add
-    // deep-link. The anchored match excludes /pace/:section/edit, so the button
-    // falls back to the picker like any other non-section route.
-    //
-    // Worth knowing: leaving this page by any route discards the draft, because
-    // one Save covers the whole card and beforeunload does not fire on an SPA
-    // navigation. That is true of every link on the page, not of this button
-    // specifically, which is why it is no longer singled out for removal.
+    // It no longer deep-links anywhere from any route: the drawer opens in
+    // place (next test). Leaving this page by any route still discards the
+    // draft, because one Save covers the whole card and beforeunload does not
+    // fire on an SPA navigation; that is why the header keeps the editor on
+    // screen after Create instead of landing on the nets library.
     renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
     await userEvent.click(screen.getByRole('button', { name: 'add' }));
     expect(screen.getByRole('menuitem', { name: /Add Net/ })).toBeInTheDocument();
+  });
+
+  it('opens the Add Net drawer over the editor, pre-selected to this squadron', async () => {
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+    await userEvent.click(screen.getByRole('button', { name: 'add' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Add Net/ }));
+
+    const drawer = within(screen.getByRole('dialog'));
+    expect(drawer.getByRole('heading', { name: 'Add Net' })).toBeInTheDocument();
+    expect(drawer.getByRole('combobox', { name: /Squadron/ })).toHaveTextContent('A SQD');
+    // The editor is still mounted behind the drawer: its draft is intact.
+    expect(screen.getByDisplayValue('EXERCISE ONE')).toBeInTheDocument();
   });
 
   it('reports a failed card fetch instead of offering a blank card to save', () => {
@@ -552,8 +605,11 @@ describe('PaceEditorPage', () => {
 
       // This fixture stores no tiers, so every tile is in its empty state: the
       // bare letter above, the spelled-out word inside as grey subtext.
+      // Scoped below the header, whose PACE glyph (pace-icon.tsx) also draws
+      // the four letters as SVG text.
+      const content = within(document.getElementById('main-content')!);
       for (const letter of ['P', 'A', 'C', 'E']) {
-        expect(screen.getByText(letter)).toBeInTheDocument();
+        expect(content.getByText(letter)).toBeInTheDocument();
       }
     });
 
@@ -606,6 +662,57 @@ describe('PaceEditorPage', () => {
       // placeholder until the real bytes are in hand, so a hub or thumbnail is
       // never empty and never broken.
       expect(img.getAttribute('src')).toBeTruthy();
+    });
+  });
+
+  describe('Section 02, emblem upload', () => {
+    // The hub clips the emblem to a circle and centre-crops anything that is
+    // not square, so picking a file used to upload it straight into a crop the
+    // user never saw. It now opens a round 1:1 crop first.
+    const picked = new File(['raw'], 'wide.png', { type: 'image/png' });
+    const pick = () => {
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+      fireEvent.change(input, { target: { files: [picked] } });
+    };
+
+    it('opens a round 1:1 crop instead of uploading the picked file', () => {
+      renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+      pick();
+
+      const dialog = screen.getByRole('dialog', { name: 'Crop Emblem' });
+      expect(dialog).toHaveAttribute('data-aspect', '1');
+      expect(dialog).toHaveAttribute('data-shape', 'round');
+      // The hub would centre-crop a full non-square image, and a transparent
+      // PNG must not be flattened onto white.
+      expect(dialog).toHaveAttribute('data-full', 'false');
+      expect(dialog).toHaveAttribute('data-background', 'null');
+      // And a logo on a solid square can be filled out to the circle's edge.
+      expect(dialog).toHaveAttribute('data-fill-options', 'true');
+      expect(uploadEmblemMutate).not.toHaveBeenCalled();
+    });
+
+    it('uploads the cropped file, not the picked one, on confirm', async () => {
+      const user = userEvent.setup();
+      renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+      pick();
+
+      const dialog = screen.getByRole('dialog', { name: 'Crop Emblem' });
+      await user.click(within(dialog).getByRole('button', { name: 'Apply Crop' }));
+
+      expect(uploadEmblemMutate).toHaveBeenCalledWith({ section: 'asqd', file: CROPPED });
+      expect(screen.queryByRole('dialog', { name: 'Crop Emblem' })).not.toBeInTheDocument();
+    });
+
+    it('uploads nothing when the crop is cancelled', async () => {
+      const user = userEvent.setup();
+      renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+      pick();
+
+      const dialog = screen.getByRole('dialog', { name: 'Crop Emblem' });
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      expect(uploadEmblemMutate).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: 'Crop Emblem' })).not.toBeInTheDocument();
     });
   });
 
@@ -844,5 +951,155 @@ describe('PaceEditorPage', () => {
       expect(tier?.equipment_id).toBe('');
       expect(tier?.custom_label).toBe('Typed instead');
     });
+  });
+});
+
+describe('PaceEditorPage theater', () => {
+  it('edits the card the URL names, shows it beside the title, and saves to it', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit?theater=oconus');
+
+    expect(screen.getByRole('button', { name: 'OCONUS' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.type(inSection('Card header').getByLabelText('Version'), 'v9');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saveMutate.mock.calls[0]?.[0]).toMatchObject({ section: 'asqd', theater: 'oconus' });
+  });
+
+  it('saves to CONUS when the URL names nothing', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+
+    expect(screen.getByRole('button', { name: 'CONUS' })).toHaveAttribute('aria-pressed', 'true');
+    await user.type(inSection('Card header').getByLabelText('Version'), 'v9');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saveMutate.mock.calls[0]?.[0]).toMatchObject({ section: 'asqd', theater: 'conus' });
+  });
+
+  it('offers a channel only the nets in the card\'s theater, and a both net in either', () => {
+    const oconusOnly = { ...nets[0]!, id: 'oc1', name: 'OCONUS NET', theater: 'oconus' };
+    netsState = { data: { nets: [...nets, oconusOnly], total: 4 }, isLoading: false, isError: false };
+
+    const { unmount } = renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+    const conusOptions = within(screen.getAllByRole('combobox')[0]!).getAllByRole('option').map((o) => o.textContent);
+    expect(conusOptions).toContain('JEM NET');
+    expect(conusOptions).toContain('SHARED NET');
+    expect(conusOptions).not.toContain('OCONUS NET');
+    unmount();
+
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit?theater=oconus');
+    const oconusOptions = within(screen.getAllByRole('combobox')[0]!).getAllByRole('option').map((o) => o.textContent);
+    expect(oconusOptions).toContain('OCONUS NET');
+    expect(oconusOptions).toContain('SHARED NET');
+    expect(oconusOptions).not.toContain('JEM NET');
+  });
+});
+
+describe('PaceEditorPage header preview', () => {
+  // The form field holds the title as an input value, which getByText does not
+  // see, so a text match can only be the preview.
+  it('draws the title, date and version as they are typed', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+
+    expect(screen.getByText('EXERCISE ONE')).toBeInTheDocument();
+    expect(screen.getByText('20 AUG 2026')).toBeInTheDocument();
+
+    await user.type(inSection('Card header').getByLabelText('Title'), ' X');
+    expect(screen.getByText('EXERCISE ONE X')).toBeInTheDocument();
+
+    await user.type(inSection('Card header').getByLabelText('Version'), 'v7');
+    expect(screen.getByText('v7')).toBeInTheDocument();
+  });
+
+  it('reds a marked value in the preview, and drops the date when it is excluded', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Mark Title as changed' }));
+    expect(screen.getByText('EXERCISE ONE')).toHaveAttribute('data-changed', 'true');
+
+    await user.click(inSection('Card header').getByLabelText('Include date'));
+    expect(screen.queryByText('20 AUG 2026')).toBeNull();
+  });
+});
+
+describe('PaceEditorPage theater switch', () => {
+  const Probe = () => {
+    const loc = useLocation();
+    return <output data-testid="location">{loc.pathname + loc.search}</output>;
+  };
+
+  it('switches a clean draft straight to the other card', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm');
+    renderWithRoute(<><PaceEditorPage /><Probe /></>, '/pace/asqd/edit');
+
+    await user.click(screen.getByRole('button', { name: 'OCONUS' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByTestId('location').textContent).toBe('/pace/asqd/edit?theater=oconus');
+    expect(paceCardCalls[paceCardCalls.length - 1]).toEqual(['asqd', 'oconus']);
+    confirm.mockRestore();
+  });
+
+  it('asks before leaving a dirty draft, and a refusal changes nothing', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderWithRoute(<><PaceEditorPage /><Probe /></>, '/pace/asqd/edit');
+
+    await user.type(inSection('Card header').getByLabelText('Version'), 'v9');
+    await user.click(screen.getByRole('button', { name: 'OCONUS' }));
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(String(confirm.mock.calls[0]?.[0])).toMatch(/CONUS card and open the OCONUS one/);
+    expect(screen.getByTestId('location').textContent).toBe('/pace/asqd/edit');
+    expect(inSection('Card header').getByLabelText('Version')).toHaveValue('v9');
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('switches a dirty draft once the discard is confirmed', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithRoute(<><PaceEditorPage /><Probe /></>, '/pace/asqd/edit');
+
+    await user.type(inSection('Card header').getByLabelText('Version'), 'v9');
+    await user.click(screen.getByRole('button', { name: 'OCONUS' }));
+
+    expect(screen.getByTestId('location').textContent).toBe('/pace/asqd/edit?theater=oconus');
+    expect(paceCardCalls[paceCardCalls.length - 1]).toEqual(['asqd', 'oconus']);
+    confirm.mockRestore();
+  });
+});
+
+describe('PaceEditorPage preview toggle', () => {
+  it('hides and shows the preview in place, leaving the form alone', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+
+    const button = screen.getByRole('button', { name: 'Hide Preview' });
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('EXERCISE ONE')).toBeInTheDocument();
+
+    await user.click(button);
+    expect(screen.getByRole('button', { name: 'Show Preview' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText('EXERCISE ONE')).toBeNull();
+    expect(inSection('Card header').getByLabelText('Title')).toHaveValue('EXERCISE ONE');
+
+    await user.click(screen.getByRole('button', { name: 'Show Preview' }));
+    expect(screen.getByText('EXERCISE ONE')).toBeInTheDocument();
+  });
+});
+
+describe('PaceEditorPage tier rows', () => {
+  it('does not open a theme-spaced gap under each tier', () => {
+    // rowSty is a CSSProperties object with marginBottom: 12. Passed through
+    // sx that number is twelve theme units, 96px, which is what sat under
+    // every tier until this test.
+    renderWithRoute(<PaceEditorPage />, '/pace/asqd/edit');
+    const fields = screen.getByText('P - Primary').nextElementSibling as HTMLElement;
+    expect(fields).not.toBeNull();
+    expect(getComputedStyle(fields).marginBottom).not.toBe('96px');
+    expect(fields.querySelector('select')).not.toBeNull();
   });
 });

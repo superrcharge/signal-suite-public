@@ -6,6 +6,7 @@ type CreateNetRequest struct {
 	Name        string `json:"name"            validate:"required,min=1,max=100"`
 	NetID       string `json:"net_id"          validate:"omitempty,max=50"`
 	RadioType   string `json:"radio_type"      validate:"omitempty,max=10"`
+	Theater     string `json:"theater"         validate:"omitempty,max=10"`
 	TxFreq      string `json:"tx_freq"         validate:"omitempty,max=60"`
 	RxFreq      string `json:"rx_freq"         validate:"omitempty,max=60"`
 	FreqUnit    string `json:"freq_unit"       validate:"omitempty,max=4"`
@@ -23,6 +24,7 @@ type UpdateNetRequest struct {
 	Name        *string `json:"name"            validate:"omitempty,min=1,max=100"`
 	NetID       *string `json:"net_id"          validate:"omitempty,max=50"`
 	RadioType   *string `json:"radio_type"      validate:"omitempty,max=10"`
+	Theater     *string `json:"theater"         validate:"omitempty,max=10"`
 	TxFreq      *string `json:"tx_freq"         validate:"omitempty,max=60"`
 	RxFreq      *string `json:"rx_freq"         validate:"omitempty,max=60"`
 	FreqUnit    *string `json:"freq_unit"       validate:"omitempty,max=4"`

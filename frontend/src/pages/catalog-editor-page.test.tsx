@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import userEvent from '@testing-library/user-event';
 
-import { renderWithRoute, screen, within } from '@/test/utils';
+import { act, renderWithRoute, screen, within } from '@/test/utils';
 import { CatalogEditorPage, EquipmentFormPane } from './catalog-editor-page';
 import { blankDraft } from './catalog-editor-draft';
 import type { Equipment, EquipmentService, Service } from '@/types';
@@ -60,6 +60,7 @@ let servicesState: {
 // Stable spies, not fresh vi.fn()s per render: the save payload is what proves a
 // hand-entered service actually reached the server.
 const updateEquipment = vi.fn();
+const deleteEquipmentPhoto = vi.fn();
 
 // Closed mock - every hook the render tree pulls must be listed, including the
 // sidebar/header hooks MainLayout mounts.
@@ -70,7 +71,8 @@ vi.mock('@/services', () => ({
   useCreateEquipment: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateEquipment: () => ({ mutate: updateEquipment, isPending: false }),
   useDeleteEquipment: () => ({ mutate: vi.fn(), isPending: false }),
-  useUploadEquipmentPhoto: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
+  useUploadEquipmentPhoto: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
+  useDeleteEquipmentPhoto: () => ({ mutate: deleteEquipmentPhoto, reset: vi.fn(), isPending: false, error: null }),
   useWaveforms: () => ({ data: { waveforms: [], total: 0 }, isLoading: false }),
   useCreateWaveform: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
   useUpdateWaveform: () => ({ mutate: vi.fn(), isPending: false }),
@@ -86,6 +88,7 @@ vi.mock('@/services', () => ({
   // MainLayout: sidebar, header and the section dialog
   useSections: () => ({ data: undefined, isLoading: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   useUpdateSection: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSection: () => ({ mutate: vi.fn(), isPending: false }),
   useTerminals: () => ({ data: undefined, isLoading: false }),
@@ -501,7 +504,7 @@ describe('reference libraries and admin', () => {
 //
 // The upload control sits in EquipmentFormPane and used to read no permission
 // at all - it was safe only because CatalogEditorPage early-returns a refusal
-// before rendering the pane. That is the shape the earlier WaveformLibraryPane
+// before rendering the pane. That is the shape the v1.10.0 WaveformLibraryPane
 // fix named: a gate inherited from a parent is not a gate the component has. It
 // now takes `canEdit` as a prop.
 //
@@ -573,6 +576,108 @@ describe('the photo control', () => {
       renderWithRoute(<EquipmentFormPane {...paneProps(true)} />, '/catalog/gatr/edit');
 
       expect(screen.getByRole('button', { name: /Upload Photo/i })).toBeInTheDocument();
+    });
+  });
+});
+
+// ─── F. Removing a photo ────────────────────────────────────────────────────
+//
+// The server deletes the blob, so the control asks first, and it only appears
+// where there is a photo to remove and the caller may write the record.
+
+describe('the remove-photo mark', () => {
+  const withPhoto = {
+    ...equipment, photo_url: 'https://acct.blob.core.windows.net/equipment-photos/gatr/a.jpg',
+  } as unknown as Equipment;
+
+  /** Run the mutation's onSuccess, as the real hook would once the DELETE lands. */
+  const succeedRemoval = () => {
+    const opts = deleteEquipmentPhoto.mock.calls[0]?.[1] as { onSuccess: () => void } | undefined;
+    if (!opts) throw new Error('remove was never called');
+    act(() => opts.onSuccess());
+  };
+
+  beforeEach(() => {
+    mockParams.id = 'gatr';
+    itemState = { data: withPhoto, isLoading: false };
+  });
+
+  it('asks, then removes the photo of the record being edited', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<CatalogEditorPage />, '/catalog/gatr/edit');
+
+    await user.click(screen.getByRole('button', { name: 'Remove photo' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/GATR-2/));
+    expect(deleteEquipmentPhoto).toHaveBeenCalledWith({ id: 'gatr' }, expect.anything());
+  });
+
+  it('does nothing when the prompt is declined', async () => {
+    confirmSpy.mockReturnValue(false);
+    const user = userEvent.setup();
+    renderWithRoute(<CatalogEditorPage />, '/catalog/gatr/edit');
+
+    await user.click(screen.getByRole('button', { name: 'Remove photo' }));
+
+    expect(deleteEquipmentPhoto).not.toHaveBeenCalled();
+  });
+
+  it('drops back to No Photo and Upload Photo once the removal lands', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<CatalogEditorPage />, '/catalog/gatr/edit');
+
+    await user.click(screen.getByRole('button', { name: 'Remove photo' }));
+    succeedRemoval();
+
+    expect(screen.queryByRole('button', { name: 'Remove photo' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Upload Photo/i })).toBeInTheDocument();
+    expect(screen.getByText('No Photo')).toBeInTheDocument();
+  });
+
+  // Save sends the draft's photo_url. A draft still holding the old URL would
+  // write the deleted blob's address straight back onto the record.
+  it('does not send the removed URL back on the next Save', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<CatalogEditorPage />, '/catalog/gatr/edit');
+
+    await user.click(screen.getByRole('button', { name: 'Remove photo' }));
+    succeedRemoval();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    const arg = updateEquipment.mock.calls[0]?.[0] as { data: { photo_url?: string } } | undefined;
+    expect(arg).toBeDefined();
+    expect(arg!.data.photo_url).toBeUndefined();
+  });
+
+  it('is not offered on a record with no photo', () => {
+    itemState = { data: equipment, isLoading: false };
+    renderWithRoute(<CatalogEditorPage />, '/catalog/gatr/edit');
+
+    expect(screen.getByRole('button', { name: /Upload Photo/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove photo' })).toBeNull();
+  });
+
+  describe('rendered directly, so canEdit can be false', () => {
+    const paneProps = (canEdit: boolean) => ({
+      draft: { ...blankDraft('satcom'), id: 'gatr', nomenclature: 'GATR-2', photo_url: withPhoto.photo_url! },
+      isNew: false,
+      globalWaveforms: [],
+      globalServices: libServices,
+      servicesUnavailable: false,
+      onPatch: vi.fn(),
+      canEdit,
+    });
+
+    it('hides the remove mark when canEdit is false', () => {
+      renderWithRoute(<EquipmentFormPane {...paneProps(false)} />, '/catalog/gatr/edit');
+
+      expect(screen.queryByRole('button', { name: 'Remove photo' })).toBeNull();
+    });
+
+    it('shows it when canEdit is true, so the assertion above is not vacuous', () => {
+      renderWithRoute(<EquipmentFormPane {...paneProps(true)} />, '/catalog/gatr/edit');
+
+      expect(screen.getByRole('button', { name: 'Remove photo' })).toBeInTheDocument();
     });
   });
 });

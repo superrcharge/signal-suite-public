@@ -1,5 +1,5 @@
 # Development Dockerfile for Vite with hot reloading
-# Used with compose.dev.yaml for OAuth2-Proxy integration
+# Used by compose.dev.yaml as the frontend-dev container; the backend on :3001 proxies it
 
 FROM node:26-alpine
 

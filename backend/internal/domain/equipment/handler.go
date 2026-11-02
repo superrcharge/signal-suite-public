@@ -2,7 +2,6 @@ package equipment
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -176,7 +175,7 @@ var allowedPhotoTypes = map[string]string{
 
 func (h *Handler) UploadPhoto(c fiber.Ctx) error {
 	if h.blob == nil {
-		return c.Status(http.StatusNotImplemented).JSON(response.Err(errors.New("blob storage not configured")))
+		return c.Status(ErrPhotoStorageNotConfigured.Status).JSON(response.Err(ErrPhotoStorageNotConfigured))
 	}
 
 	id := c.Params("id")
@@ -197,7 +196,7 @@ func (h *Handler) UploadPhoto(c fiber.Ctx) error {
 
 	fh, err := c.FormFile("photo")
 	if err != nil {
-		return c.Status(http.StatusBadRequest).JSON(response.Err(errors.New("field 'photo' required")))
+		return c.Status(ErrPhotoFieldRequired.Status).JSON(response.Err(ErrPhotoFieldRequired))
 	}
 
 	ct := fh.Header.Get("Content-Type")
@@ -213,7 +212,7 @@ func (h *Handler) UploadPhoto(c fiber.Ctx) error {
 		case ".webp":
 			ct = "image/webp"
 		default:
-			return c.Status(http.StatusBadRequest).JSON(response.Err(errors.New("unsupported image type; use JPEG, PNG, or WebP")))
+			return c.Status(ErrPhotoUnsupportedType.Status).JSON(response.Err(ErrPhotoUnsupportedType))
 		}
 	}
 
@@ -226,6 +225,9 @@ func (h *Handler) UploadPhoto(c fiber.Ctx) error {
 	blobName := fmt.Sprintf("%s/%s%s", id, uuid.New().String(), ext)
 	url, err := h.blob.UploadStream(c.Context(), blobName, ct, f)
 	if err != nil {
+		// The response is a generic 500, so this line is the only place the
+		// storage error (auth audience, role, network) is ever visible.
+		log.Printf("error: equipment %s: photo upload: %v", id, err)
 		return c.Status(http.StatusInternalServerError).JSON(response.Err(err))
 	}
 
@@ -249,9 +251,54 @@ func (h *Handler) UploadPhoto(c fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(response.Success(map[string]string{"url": url}))
 }
 
+// DeletePhoto clears the record's photo and removes the blob behind it.
+//
+// It goes through UpdateEquipment rather than its own write, so the removal
+// takes the same radio-scope check, the same audit entry (a photo_url diff),
+// and the same superseded-blob cleanup that a replacement does. That cleanup
+// runs after the row commits and is best effort: a blob that outlives its
+// reference is wasteful, but failing the request would leave the caller
+// believing the photo is still on the record when it is not.
+func (h *Handler) DeletePhoto(c fiber.Ctx) error {
+	if h.blob == nil {
+		return c.Status(ErrPhotoStorageNotConfigured.Status).JSON(response.Err(ErrPhotoStorageNotConfigured))
+	}
+
+	id := c.Params("id")
+	existing := &dto.GetEquipmentResponse{}
+	if status, err := h.service.GetEquipment(c.Context(), &dto.GetEquipmentRequest{ID: id}, existing); err != nil {
+		return c.Status(status).JSON(response.Err(err))
+	}
+
+	// Scope before existence, so an rto caller learns nothing about a satcom
+	// record's photo. UpdateEquipment would refuse too; checking here keeps the
+	// answer independent of whether a photo happens to be set.
+	if actorRadioOnly(c) && existing.Equipment.TerminalType != TerminalTypeRadio {
+		return c.Status(ErrRadioScopeOnly.Status).JSON(response.Err(ErrRadioScopeOnly))
+	}
+
+	if existing.Equipment.PhotoURL == nil || *existing.Equipment.PhotoURL == "" {
+		return c.Status(ErrNoPhoto.Status).JSON(response.Err(ErrNoPhoto))
+	}
+
+	cleared := ""
+	updateReq := &dto.UpdateEquipmentRequest{
+		ID:             id,
+		PhotoURL:       &cleared,
+		UpdatedBy:      currentUserName(c),
+		ActorID:        currentUserID(c),
+		ActorRadioOnly: actorRadioOnly(c),
+	}
+	if status, err := h.service.UpdateEquipment(c.Context(), updateReq, &dto.UpdateEquipmentResponse{}); err != nil {
+		return c.Status(status).JSON(response.Err(err))
+	}
+
+	return c.SendStatus(http.StatusNoContent)
+}
+
 func (h *Handler) GetPhoto(c fiber.Ctx) error {
 	if h.blob == nil {
-		return c.Status(http.StatusNotImplemented).JSON(response.Err(errors.New("blob storage not configured")))
+		return c.Status(ErrPhotoStorageNotConfigured.Status).JSON(response.Err(ErrPhotoStorageNotConfigured))
 	}
 
 	id := c.Params("id")
@@ -261,7 +308,7 @@ func (h *Handler) GetPhoto(c fiber.Ctx) error {
 	}
 
 	if eResp.Equipment.PhotoURL == nil || *eResp.Equipment.PhotoURL == "" {
-		return c.Status(http.StatusNotFound).JSON(response.Err(errors.New("no photo for this equipment record")))
+		return c.Status(ErrNoPhoto.Status).JSON(response.Err(ErrNoPhoto))
 	}
 
 	blobName, err := h.blob.BlobNameFromURL(*eResp.Equipment.PhotoURL)
@@ -271,11 +318,13 @@ func (h *Handler) GetPhoto(c fiber.Ctx) error {
 
 	reader, contentType, err := h.blob.Download(c.Context(), blobName)
 	if err != nil {
+		log.Printf("error: equipment %s: photo download: %v", id, err)
 		return c.Status(http.StatusInternalServerError).JSON(response.Err(err))
 	}
 	data, err := io.ReadAll(reader)
 	_ = reader.Close()
 	if err != nil {
+		log.Printf("error: equipment %s: photo read: %v", id, err)
 		return c.Status(http.StatusInternalServerError).JSON(response.Err(err))
 	}
 

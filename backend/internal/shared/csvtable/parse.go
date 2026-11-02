@@ -2,8 +2,11 @@ package csvtable
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -17,9 +20,53 @@ type RowError struct {
 }
 
 // ParseResult is the outcome of reading an uploaded file.
+//
+// Lines runs parallel to Rows: Lines[i] is the line of the file Rows[i] came
+// from. A service that rejects a row after parsing reports that line, not its
+// position in Rows - Rows holds only the rows that passed, so an index into it
+// stops matching the file after the first rejection.
 type ParseResult[T any] struct {
 	Rows   []*T
+	Lines  []int
 	Errors []RowError
+
+	rejected map[int]bool
+}
+
+// Reject records that Rows[i] failed after parsing - a rule the parser cannot
+// see, or a failed save - numbered by the line it came from. The row stays in
+// Rows until Finish, so indexes held by the caller's loop stay valid.
+//
+// It exists because six services each wrote `Row: i + 2`, which is right only
+// until the parser rejects a row: Rows holds just the rows that passed, so
+// every later number came out short.
+func (p *ParseResult[T]) Reject(i int, name string, reasons ...string) {
+	if p.rejected == nil {
+		p.rejected = make(map[int]bool)
+	}
+	p.rejected[i] = true
+	p.Errors = append(p.Errors, RowError{Row: p.Lines[i], Name: name, Errors: reasons})
+}
+
+// Finish drops the rejected rows, keeping Lines aligned with what is left,
+// orders the errors by line, and returns the HTTP status for the outcome.
+//
+// Ordered because service rejections are appended after the parser's, and a
+// report that jumps from row 40 back to row 3 reads as two separate lists.
+func (p *ParseResult[T]) Finish() int {
+	if len(p.rejected) > 0 {
+		rows := make([]*T, 0, len(p.Rows)-len(p.rejected))
+		lines := make([]int, 0, cap(rows))
+		for i, row := range p.Rows {
+			if !p.rejected[i] {
+				rows = append(rows, row)
+				lines = append(lines, p.Lines[i])
+			}
+		}
+		p.Rows, p.Lines, p.rejected = rows, lines, nil
+	}
+	sort.SliceStable(p.Errors, func(i, j int) bool { return p.Errors[i].Row < p.Errors[j].Row })
+	return ImportStatus(len(p.Rows), len(p.Errors))
 }
 
 // Parse reads an uploaded CSV body into rows, collecting per-row errors.
@@ -33,12 +80,16 @@ func (b *Bound[T]) Parse(raw string, existing []string) (*ParseResult[T], error)
 		return nil, ErrImportNotSupported(t.Domain)
 	}
 
-	lines := filterLines(raw)
-	if len(lines) < 2 {
+	lines, content := filterLines(raw)
+	if content < 2 {
 		return nil, ErrInvalidCSV(t.Domain)
 	}
 
 	r := csv.NewReader(strings.NewReader(strings.Join(lines, "\n")))
+	// Row width is checked below, per row. The reader's own check fails the
+	// read, and a failed read used to end the loop: one short row silently
+	// dropped itself and every row after it.
+	r.FieldsPerRecord = -1
 	headers, err := r.Read()
 	if err != nil {
 		return nil, ErrInvalidCSV(t.Domain)
@@ -72,13 +123,47 @@ func (b *Bound[T]) Parse(raw string, existing []string) (*ParseResult[T], error)
 	seen := make(map[string]bool)
 
 	result := &ParseResult[T]{Errors: []RowError{}}
-	rowNum := 1
 	for {
 		fields, err := r.Read()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
 		}
-		rowNum++
+		if err != nil {
+			// A malformed row - a stray quote, usually - is reported at the line it
+			// starts on and the rest of the file still imports. An unterminated
+			// quote can swallow everything after it; that is still one reported
+			// row rather than a silent stop.
+			line := 0
+			var pe *csv.ParseError
+			if errors.As(err, &pe) {
+				line = pe.StartLine
+			}
+			result.Errors = append(result.Errors, RowError{
+				Row:    line,
+				Name:   "(unreadable)",
+				Errors: []string{fmt.Sprintf("could not be read: %s", csvErrText(err))},
+			})
+			continue
+		}
+		// The line the record starts on, counted in the file as uploaded: comment
+		// and blank lines were blanked rather than removed, so this is the row a
+		// spreadsheet shows with the template's instructions left in.
+		rowNum, _ := r.FieldPos(0)
+
+		// More cells than headers means the extra ones have nowhere to go, and it
+		// is nearly always an unquoted comma shifting every later cell one column
+		// right. Fewer is fine: trailing blank cells are commonly trimmed by
+		// spreadsheet tools, and a missing cell reads as blank.
+		if len(fields) > len(headers) {
+			result.Errors = append(result.Errors, RowError{
+				Row:  rowNum,
+				Name: firstNonEmpty(fields),
+				Errors: []string{fmt.Sprintf(
+					"has %d cells but the header has %d - a comma inside a value needs the value in double quotes",
+					len(fields), len(headers))},
+			})
+			continue
+		}
 
 		row := make(Row, len(headers))
 		for i, h := range headers {
@@ -110,9 +195,31 @@ func (b *Bound[T]) Parse(raw string, existing []string) (*ParseResult[T], error)
 			continue
 		}
 		result.Rows = append(result.Rows, item)
+		result.Lines = append(result.Lines, rowNum)
 	}
 
 	return result, nil
+}
+
+// csvErrText is a ParseError's reason without the "record on line N" prefix,
+// since the row column already says which line.
+func csvErrText(err error) string {
+	var pe *csv.ParseError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// firstNonEmpty names a row that could not be mapped onto the header, where the
+// identity column cannot be trusted to hold the identity.
+func firstNonEmpty(fields []string) string {
+	for _, f := range fields {
+		if v := strings.TrimSpace(f); v != "" {
+			return v
+		}
+	}
+	return "(blank)"
 }
 
 // applyRow runs every settable column against one record.
@@ -189,23 +296,39 @@ func (b *Bound[T]) rowLabel(row Row) string {
 	return "(blank)"
 }
 
-// filterLines drops blank lines and # comments, so a template can be filled in
-// and uploaded without deleting its own instructions first.
-func filterLines(raw string) []string {
-	var lines []string
-	for _, line := range strings.Split(raw, "\n") {
+// filterLines blanks # comments, so a template can be filled in and uploaded
+// without deleting its own instructions first. It returns every line and the
+// count of lines with content.
+//
+// Blanked, not removed. encoding/csv skips empty lines on its own, so removing
+// them bought nothing and cost the line numbers: every row reported short by
+// the number of comment lines above it, which on the template is eight, so a
+// user told "row 6" looked at the wrong platform.
+func filterLines(raw string) ([]string, int) {
+	lines := strings.Split(raw, "\n")
+	content := 0
+	for i, line := range lines {
 		line = strings.TrimRight(line, "\r")
-		if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.HasPrefix(trimmed, "#") {
-			lines = append(lines, line)
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			lines[i] = ""
+			continue
 		}
+		lines[i] = line
+		content++
 	}
-	return lines
+	return lines, content
 }
 
 // ImportStatus is the HTTP status for an import outcome: 400 when every row
 // failed, 207 whenever anything was written. A completely clean import is 207
-// too. That is the rule terminals and kits already ship and the frontend already
-// reads, so it is preserved rather than tidied.
+// too. That is the rule terminals and kits already ship, so it is preserved
+// rather than tidied.
+//
+// The 400 still carries the ordinary success envelope with the full row report,
+// because the row reasons are the whole point of the response. A client must
+// read the body before treating the status as an error: the frontend's generic
+// handler did not, and showed "Import failed" over the list of reasons.
 func ImportStatus(imported, failed int) int {
 	if imported == 0 && failed > 0 {
 		return http.StatusBadRequest

@@ -67,7 +67,7 @@ func ErrMissingIdentityColumn(domain, identity string) *Error {
 // thing instead.
 func ErrImportHasServerColumn(domain, col string) *Error {
 	return &Error{
-		Code:    code(domain, "IMPORT_HAS_"+strings.ToUpper(col)),
+		Code: code(domain, "IMPORT_HAS_"+strings.ToUpper(col)),
 		Message: fmt.Sprintf(
 			"this file has a %q column, so it came from an export - import creates new "+
 				"records and cannot update existing ones. Remove the column to import these "+

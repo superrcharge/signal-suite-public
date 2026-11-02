@@ -39,7 +39,7 @@ var csvTable = csvtable.Table[Equipment]{
 		"SWAP and features live in a nested structure a CSV cannot carry - fill them",
 		"in afterwards in the equipment editor.",
 		"REQUIRED: id (a lowercase slug, unique), nomenclature and terminal_type.",
-		"Delete every # line and the EXAMPLE rows. Keep the header row below.",
+		"Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.",
 	},
 
 	Columns: []csvtable.Column[Equipment]{
@@ -96,8 +96,8 @@ var csvTable = csvtable.Table[Equipment]{
 			// Pipe-joined rather than comma, because a comma would need quoting in
 			// every row that has more than one mode.
 			Key: "operational_mode", Label: "Operational Mode",
-			Note:    "Operational Mode: pipe-separated, e.g. fixed|on the move",
-			Get:     csvtable.List("|", func(e *Equipment) []string { return e.OperationalMode }),
+			Note: "Operational Mode: pipe-separated, e.g. fixed|on the move",
+			Get:  csvtable.List("|", func(e *Equipment) []string { return e.OperationalMode }),
 			Set: func(e *Equipment, v string) error {
 				e.OperationalMode = splitModes(v)
 				return nil
@@ -226,14 +226,9 @@ func (s *Service) ImportEquipment(ctx context.Context, csvBody, actor string, ac
 	}
 
 	now := time.Now().UTC()
-	created := make([]*Equipment, 0, len(parsed.Rows))
 	for i, e := range parsed.Rows {
 		if actorRadioOnly && e.TerminalType != TerminalTypeRadio {
-			parsed.Errors = append(parsed.Errors, csvtable.RowError{
-				Row:    i + 2,
-				Name:   e.ID,
-				Errors: []string{ErrRadioScopeOnly.Message},
-			})
+			parsed.Reject(i, e.ID, ErrRadioScopeOnly.Message)
 			continue
 		}
 
@@ -244,16 +239,10 @@ func (s *Service) ImportEquipment(ctx context.Context, csvBody, actor string, ac
 		e.CreatedAt = now
 		e.UpdatedAt = now
 		if err := s.repo.Create(ctx, e); err != nil {
-			parsed.Errors = append(parsed.Errors, csvtable.RowError{
-				Row:    i + 2,
-				Name:   e.ID,
-				Errors: []string{"could not be saved"},
-			})
+			parsed.Reject(i, e.ID, "could not be saved")
 			continue
 		}
-		created = append(created, e)
 	}
-	parsed.Rows = created
 
-	return csvtable.ImportStatus(len(parsed.Rows), len(parsed.Errors)), parsed, nil
+	return parsed.Finish(), parsed, nil
 }

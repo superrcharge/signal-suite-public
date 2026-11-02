@@ -1,5 +1,8 @@
 /**
- * The four Comms Library panes, keyed as the URL names them.
+ * The four Comms Library panes, keyed as the URL names them, in chip order.
+ * Organizations are deliberately not here: they are visible only inside
+ * Operations, added from the Join Operation wizard, and a fifth chip for
+ * them was removed on 2026-10-09 the day it arrived.
  *
  * Its own module because both the library page and its print route read it,
  * and a page module that exports constants beside its component breaks fast

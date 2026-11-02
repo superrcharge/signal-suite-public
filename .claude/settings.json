@@ -22,6 +22,7 @@
       "Bash(node scripts/check-csv-coverage.mjs)",
       "Bash(node scripts/check-em-dash.mjs)",
       "Bash(node scripts/env-report.mjs)",
+      "Bash(node scripts/start-checks.mjs)",
       "Bash(node --test *)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
@@ -53,6 +54,13 @@
             "args": ["scripts/env-report.mjs"],
             "timeout": 15,
             "statusMessage": "Reading machine environment"
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["scripts/start-checks.mjs"],
+            "timeout": 60,
+            "statusMessage": "Running /start session gate"
           }
         ]
       }

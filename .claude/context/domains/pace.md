@@ -1,7 +1,8 @@
 # PACE domain (PACE Planner)
 
 A squadron's comms card: the JEM and MPU5 channel wheels, the net sitting on each wheel
-position, and the header the sheet prints above them. One card per squadron.
+position, and the header the sheet prints above them. Two cards per squadron, CONUS and
+OCONUS, since `042_add_theater.sql` - see "Theater" below.
 
 The card is the unit of work, not the channel. That single decision explains most of the
 shape below - one read endpoint, one save endpoint, one transaction, one page with one
@@ -14,6 +15,10 @@ reference each other through `shared/contracts` and neither imports the other.
 
 **Migrations:** `backend/migrations/025_create_channel_plans.sql` and
 `backend/migrations/027_create_pace_plans.sql`
+
+**The DDL in this file is each table as its own migration created it, before 042.**
+Every per-squadron uniqueness key shown in these blocks has since widened to include `theater`, so `UNIQUE (section, radio_type)`, `section ... UNIQUE`, `UNIQUE (section, block, position)`, `UNIQUE (section, position)` and `UNIQUE (section, tier)` are the pre-042 shape.
+The current keys are listed under "Theater" below.
 
 ```sql
 -- 025: one wheel per squadron per radio
@@ -86,6 +91,39 @@ CREATE TABLE pace_tmn_rows (
   UNIQUE (section, position)
 );
 ```
+
+### Theater: every squadron keeps two whole cards
+
+**Migration:** `backend/migrations/042_add_theater.sql`.
+
+A squadron's CONUS card and its OCONUS card are different plans, not two views of one.
+Every PACE table gains `theater VARCHAR(10) NOT NULL DEFAULT 'conus'` with a CHECK of `conus | oconus`, and every per-squadron uniqueness key widens to include it: `pace_plans (section, theater)`, `channel_plans (section, theater, radio_type)`, `pace_freq_rows (section, theater, block, position)`, `pace_tmn_rows (section, theater, position)` and `pace_tiers (section, theater, tier)`.
+The whole card is duplicated: header, both wheels, the band rows and the four tiers.
+Everything that existed before 042 is CONUS, by the column default, and OCONUS starts empty.
+
+`ValidTheaters` in `model.go` is the closed set, in the order the CSV export walks it.
+`CommsCard`, `CardHeader` and `ChannelPlan` carry `Theater`; rows and tiers do not, because they never carried `Section` either - the repository stamps `card.Theater` on them the way it stamps `card.Section`.
+
+**The theater is a query parameter**, `?theater=conus|oconus`, on `GET` and `PUT /api/v1/pace/:section`.
+Empty is CONUS, and the default lives in `normaliseTheater` in `service.go` rather than only in the handler, because the emblem handlers build a `GetCardRequest` with no theater at all and every caller that predates theaters sends none.
+A non-empty unknown value is a coded 400, `PACE_INVALID_THEATER`, never a silent fall back to CONUS.
+The export route takes no theater: see the CSV section.
+
+**A net must serve the card's theater.** `checkNets` applies `contracts.TheaterCarries(net.Theater, card.Theater)` after the radio check and refuses with `PACE_NET_WRONG_THEATER`; `both` serves either.
+The rule lives in `contracts` rather than being restated per domain the way `CarriedBy` is, because both domains apply it and two readings of one rule drift apart.
+
+**The emblem stays on `pace_plans` and is replicated across the section's theater rows.**
+A `pace_emblems` table was the tidy answer and was rejected: `check-docs.mjs` requires every `CREATE TABLE` to be drawn in `data-model.typ`, which forces a diagram edit and re-render, and the migration would need a data copy in both directions plus a second read path for `GetEmblem`.
+Replication costs one statement each way and one invariant:
+
+- **For a section, every `pace_plans` row shares one `emblem_url`, and a non-empty emblem implies a row for every entry of `ValidTheaters`.**
+- `SetEmblemURL` writes it from one side: one multi-row `INSERT ... ON CONFLICT (section, theater) DO UPDATE SET emblem_url`, one row per `ValidTheaters`, in one statement.
+- The header upsert in `SaveCard` keeps it from the other side: its `INSERT` sets `emblem_url = COALESCE((SELECT emblem_url FROM pace_plans WHERE section = $2 LIMIT 1), '')`, so an OCONUS card first saved after an upload inherits the sibling's emblem rather than being born blank. The subselect reads the pre-statement snapshot, which is exactly the sibling. The `DO UPDATE` list never names `emblem_url`.
+
+The emblem endpoints take no theater. `GetEmblem` reads the CONUS card, which is correct only because of the invariant above.
+
+**Audit:** `ResourceID` stays the section key so the log still groups by squadron, and `ResourceName` becomes `<section> <THEATER>` (`asqd OCONUS`) so the entry says which card moved.
+`PlansUsingNet` names the theater the same way: a refused net delete reads `it is on A SQD OCONUS JEM`.
 
 ### Two row tables, not one with a discriminator
 
@@ -174,6 +212,7 @@ instead - see below.
 ### PACE tiers
 
 **Migration:** `backend/migrations/034_create_pace_tiers.sql`, plus `035_add_freq_row_channel.sql` for the TACSAT channel column described below.
+The block is the 034 shape; since 042 the key is `(section, theater, tier)`, as under "Theater" above.
 
 ```sql
 CREATE TABLE pace_tiers (
@@ -270,7 +309,7 @@ The column lives on the shared `pace_freq_rows` table rather than a TACSAT-only 
 
 `FreqTable` takes a `withChannel` flag that drives the heading row and the cells together, so the columns cannot drift out of step with their headings.
 
-TACTICAL MISSION NETWORK keeps a heading row but renders it empty. The row is what carries the rule and the line of height that puts its divider on the same baseline as LTAC's and TACSAT's; deleting the row pulls the block up and the three headings fall out of step. Only the words are gone, because a label column already says what each line is, whereas a bare frequency does not say whether it is an uplink or a downlink. The editor's Section 05 mirrors it with `TACSAT_FIELDS` and a matching grid, so what a squadron types is laid out the way it prints.
+TACTICAL MISSION NETWORK keeps a heading row but renders it empty. The row is what carries the rule and the line of height that puts its divider on the same baseline as LTAC's and TACSAT's; deleting the row pulls the block up and the three headings fall out of step. Only the words are gone, because a label column already says what each line is, whereas a bare frequency does not say whether it is an uplink or a downlink. The editor's Section 05 mirrors it with `TACSAT_LINES` / `TACSAT_ROWS` and a matching grid, so what a squadron types is laid out the way it prints.
 
 ### The editor's live preview
 
@@ -363,10 +402,11 @@ colour print or the screen.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/api/v1/pace/:section` | any authenticated | The whole card in one payload: `emblem_url`, plus `ltac_rows`, `tacsat_rows` and `tmn_rows`, each always an array |
-| PUT | `/api/v1/pace/:section` | admin, editor or **rto** | The whole card in one save |
-| POST | `/api/v1/pace/:section/emblem` | admin, editor or **rto** | Multipart `emblem` field (JPEG/PNG/WebP). Uploads to Azure Blob, writes `emblem_url`, returns `{ url }`. 501 if blob not configured. |
-| DELETE | `/api/v1/pace/:section/emblem` | admin, editor or **rto** | Clears `emblem_url`, deletes the blob, 204. 501 if blob not configured. |
+| GET | `/api/v1/pace/:section?theater=` | any authenticated | The whole card in one payload: `emblem_url`, plus `ltac_rows`, `tacsat_rows` and `tmn_rows`, each always an array. `theater` is `conus` (default) or `oconus` |
+| PUT | `/api/v1/pace/:section?theater=` | admin, editor, **rto** or **planner** | The whole card in one save, to the theater named |
+| GET | `/api/v1/pace/:section/emblem` | any authenticated | Streams the stored emblem through the API with the caller's token, since the container refuses a browser fetching the raw blob URL. `Cache-Control: private, max-age=3600`. 404 `PACE_NO_EMBLEM` when none is set, 501 if blob not configured. |
+| POST | `/api/v1/pace/:section/emblem` | admin, editor, **rto** or **planner** | Multipart `emblem` field (JPEG/PNG/WebP). Uploads to Azure Blob, writes `emblem_url`, returns `{ url }`. 501 if blob not configured. |
+| DELETE | `/api/v1/pace/:section/emblem` | admin, editor, **rto** or **planner** | Clears `emblem_url`, deletes the blob, 204. 501 if blob not configured. |
 
 The card itself is two endpoints, because the editor is a single page with a single Save.
 Granular per-channel endpoints would exist only to be called in a batch anyway.
@@ -377,8 +417,8 @@ Granular per-channel endpoints would exist only to be called in a batch anyway.
 endpoints of their own: every value is per squadron and belongs to the card, and the card
 already has exactly one save.
 
-The write is a **whole-band replace**. The repository deletes every row for the section in
-both tables and reinserts the submitted list, inside the transaction `SaveCard` already
+The write is a **whole-band replace**. The repository deletes every row for the section and
+theater in both tables and reinserts the submitted list, inside the transaction `SaveCard` already
 runs in. An upsert per row would leave the rows past the end of a shorter list behind, so
 deleting a row would be impossible.
 
@@ -395,8 +435,23 @@ not.
 ### The emblem is uploaded on selection, not on card Save
 
 `emblem_url` is deliberately **not** in `SaveCardRequest` and **not** in the editor's
-`Draft`. The editor POSTs the file the moment one is chosen, and reads the stored URL back
-off the card. The card save is a whole-card replace, so routing the emblem through it
+`Draft`. The editor POSTs the file the moment the crop is confirmed, and reads the stored
+URL back off the card.
+
+Choosing a file opens `PhotoCropModal` (`components/common/photo-crop-modal.tsx`, the
+same modal the catalog editor uses) with `aspect={1}` and `cropShape="round"`. The round
+window is the hub cutout exactly: `ChannelWheel` draws the emblem into a square box of side
+`2 * hubRadius` and clips it to the inscribed circle, so a square crop shows precisely what
+the circle held. Before this, the file uploaded as picked and `xMidYMid slice` centre-cropped
+anything non-square with no way to adjust it. The crop is baked into the uploaded file, as
+the catalog's is, so nothing about it is stored. Two props differ from the catalog's call:
+`allowFullImage={false}`, since a full non-square image would be centre-cropped by the hub
+anyway, and `background={null}`, so a transparent PNG or WebP stays transparent instead of
+being flattened onto white (a JPEG still gets white, having no alpha). `fillOptions` adds a
+None / Black / White choice under the zoom slider, drawn in the preview as well as the
+output: for a logo on a solid square, zoom out until the square sits inside the circle and
+fill to match, and the hub reads as one disc instead of a square in a hole. JPEGs are not
+offered None. The card save is a whole-card replace, so routing the emblem through it
 would clear an emblem the editor was never holding on every unrelated save.
 
 The write path is its own repository method, `SetEmblemURL(ctx, section, url)`, which
@@ -413,13 +468,14 @@ object. `pace.EmblemStore` is the three-method subset of `equipment.PhotoStore`
 the same nil-safe `photoStore` value.
 
 `rto` writes alongside admin and editor: the PACE Planner is the product RTOs maintain.
+`planner` writes it too, as one of the four domains that role exists for (`pace/routes.go`, and `authz.md`).
 The frontend gate is **`canWritePace`**, not `canWrite`.
 
 **A squadron with nothing saved is not a 404.** `GetCard` scaffolds an empty header and,
 via `toCardResponse`, always emits both radios in `ValidRadios` order with
 `channel_count: 16` and no channels. There is no "create plan" step in the UI, and no
 "not set up yet" case for a consumer to special-case. The plan rows themselves are
-created lazily by the first save (`ON CONFLICT (section, radio_type) DO UPDATE`).
+created lazily by the first save (`ON CONFLICT (section, theater, radio_type) DO UPDATE`).
 
 **Error codes** (all of `errors.go`):
 
@@ -427,6 +483,8 @@ created lazily by the first save (`ON CONFLICT (section, radio_type) DO UPDATE`)
 |---|---|---|
 | `PACE_SECTION_NOT_FOUND` | 404 | `:section` is not a row in `sections` |
 | `PACE_INVALID_RADIO` | 400 | a plan's `radio_type` is not `jem` or `mpu5` |
+| `PACE_INVALID_THEATER` | 400 | `?theater=` is neither empty, `conus` nor `oconus` |
+| `PACE_NET_WRONG_THEATER` | 400 | a net was put on a card whose theater it does not serve (`both` serves either) |
 | `PACE_CHANNEL_OUT_OF_RANGE` | 400 | `channel_number` < 1 or > that plan's `channel_count` |
 | `PACE_DUPLICATE_CHANNEL` | 400 | the same channel appears twice in one plan |
 | `PACE_DUPLICATE_RADIO` | 400 | the same radio appears twice in `plans` |
@@ -434,6 +492,14 @@ created lazily by the first save (`ON CONFLICT (section, radio_type) DO UPDATE`)
 | `PACE_NET_WRONG_SECTION` | 400 | a channel names another squadron's net |
 | `PACE_NET_WRONG_RADIO` | 400 | a net was put on a wheel its `radio_type` does not carry |
 | `PACE_INVALID_DATE` | 400 | `effective_date` is not `YYYY-MM-DD` |
+| `PACE_INVALID_TIER_SOURCE` | 400 | a tier letter is not P, A, C or E, or its `source` is not `equipment`, `transport`, `custom` or `none` |
+| `PACE_DUPLICATE_TIER` | 400 | the same tier letter is sent more than once |
+| `PACE_TIER_MISSING_REF` | 400 | a tier names a source but carries no matching reference |
+| `PACE_INVALID_HIGHLIGHT` | 400 | a changed-mark names a field that cannot carry one |
+| `PACE_EMBLEM_REQUIRED` | 400 | an emblem upload sent no `emblem` file |
+| `PACE_EMBLEM_UNSUPPORTED_TYPE` | 400 | the emblem is not JPEG, PNG or WebP |
+| `PACE_NO_EMBLEM` | 404 | `GET .../emblem` on a squadron with no emblem set |
+| `PACE_EMBLEM_STORAGE_NOT_CONFIGURED` | 501 | an emblem route on a server with no blob storage |
 | `PACE_INTERNAL_ERROR` | 500 | repository failure |
 
 `PACE_DUPLICATE_RADIO` is not pedantry. Two `jem` plans both resolve to the same row via
@@ -526,8 +592,54 @@ A radio present with an empty channel list *is* a real clear and is still logged
 `PACE_RADIO_LABELS`, `PaceCard`, `PacePlan`, `PaceChannel`, `PaceNetSummary`,
 `SavePaceCardRequest` / `SavePacePlanInput` / `SavePaceChannelInput`.
 
-**Service hooks:** `frontend/src/services/pace-service.ts` - `usePaceCard(section)` and
-`useSavePaceCard()`. Query keys `queryKeys.pace.all` / `queryKeys.pace.card(section)`.
+**Service hooks:** `frontend/src/services/pace-service.ts` - `usePaceCard(section, theater)` and
+`useSavePaceCard()`, which takes `{ section, theater, data }`. Both always send `?theater=`
+explicitly, so a request says which card it means and the URL convention stays the page's
+concern. Query keys `queryKeys.pace.all` / `queryKeys.pace.section(section)` /
+`queryKeys.pace.card(section, theater)`; the two emblem mutations invalidate the `section`
+prefix, because the emblem is the squadron's and both cards draw it.
+
+### Theater on the pages
+
+Every squadron keeps a CONUS and an OCONUS card, and one control says which is on screen.
+
+- **The URL carries it as `?theater=oconus`, and CONUS is deleted rather than written**, the
+  same asymmetry the comms library's `?lib=` uses, so a link that says nothing means the card
+  everyone had before theaters existed. `components/pace/theater.ts` is the pure module:
+  `parseTheater`, `withTheater`, `theaterQuery` and `theaterSuffix`, unit tested directly. A
+  separate module because react-refresh forbids a non-component export beside a component.
+- **`components/pace/TheaterSwitch.tsx`** is two `aria-pressed` chips in `chipToggleSty`, the
+  control the comms library banner already uses, inside a group named Theater. It sits in the
+  **centre** of the card page's banner, on its own, where it cannot be mistaken for a filter or
+  an action; Edit and Print both follow it. The nets page carries the same component beside
+  its title, so it is learned once.
+- **The editor carries the switch too, and asks first when the draft is dirty.** It holds one
+  unsaved draft, and swapping cards underneath it discards every keystroke, so `switchTheater`
+  puts a `window.confirm` in front of the switch while `dirty` is set and does nothing on a
+  cancel. On a yes it only rewrites the URL: the reload effect keys on `section/theater` rather
+  than `section` alone, so the other card arriving replaces the draft and clears dirty, and
+  `beforeunload` stops nagging. Save goes to the theater on screen and the Back link keeps it.
+  The channel picker offers only nets in the card's theater (`carriedBy && inTheater`), the UI
+  half of what `PACE_NET_WRONG_THEATER` refuses.
+- **The editor has a Hide / Show Preview button**, the catalog editor's control for the catalog
+  editor's reason: on a narrow window the form is worth the whole width. It toggles in place
+  between Back and Save, the grid collapses to one column, and the preview pane is not rendered.
+  Not persisted, matching the catalog editor. No Tooltip on it: MUI promotes a title to the
+  aria-label, and the button already says what it does.
+- **The sheet carries a theater watermark**, a quiet condensed `CONUS` / `OCONUS` in the
+  top-left corner of the Paper, inside the sheet root so a print and both exports carry it - two
+  cards that read identically apart from their wheels must say which is which on paper. Guarded
+  on `card.theater`, because a card cached from before theaters carries none.
+- **Print** reads the theater the same way, says it in the preview bar (`A SQD · OCONUS`), and
+  keeps it in the `?print=1` reopen link. The export stem is
+  `signal-suite-pace-card-<section>-<theater>` and the slide title names the theater.
+- **The header is now a component**, `components/pace/SheetHeader.tsx`: the centred title with
+  the date and version beneath it, extracted from `SheetPreview` verbatim so the sheet and the
+  editor's live preview draw one thing. The preview lays it across both of its columns with
+  `compact`, which is the only difference, so the title, date and version being typed are
+  finally visible before Save. `formatCardDate`, `dateLineSty`, `changedSty` and `changedProps`
+  moved to `pace-constants.ts` with it, beside `SHEET_CHANGED` they are built on. The date and
+  version stay flex siblings, for the export reason in the changed-marks section.
 
 Note the reverse invalidation in `net-service.ts`: every net mutation invalidates
 `queryKeys.pace.all` as well as the nets library, because the card endpoint JOINs `nets`
@@ -578,6 +690,8 @@ query string or a filename ever has to escape one. See `section.md`.
 `nets-index-page` - both are "pick a squadron, then work on its thing", and both list
 exactly the card-bearing squadrons, so they are one component with a different
 destination (`hrefFor`) rather than two that drift apart.
+It also exports `PickerTile` (and `TILE`), the tile the Operations picker
+(`components/operations/operation-picker.tsx`) draws too.
 
 The `/pace/:section/print` entry is registered **before** `/pace/:section` in the route
 array. The other order lets the section route match `print` as a section key and render
@@ -758,8 +872,9 @@ printed sheet - see `net.md`.
 
 The sidebar's **PACE Planning** group holds the Nets Library collapsible and the
 per-squadron wheel items (`sidebar.tsx`). The header's **Add Net** button is gated on
-`canWritePace` plus an anchored path match - see `net.md`, which documents the gate and
-why `/pace/:section/edit` deliberately does not match it.
+`canWritePace` alone; a prefix path match only pre-selects the drawer's squadron, on every
+`/nets/:section` and `/pace/:section` route, `/pace/:section/edit` and `/print` included -
+see `net.md`, which documents the gate and the match.
 
 ## Squadron scoping is data partitioning, not authorization
 
@@ -790,7 +905,11 @@ would need a `users.section` column plus service-layer checks on both endpoints.
 
 ## CSV export
 
-`GET /api/v1/export/pace-channels/:section` exports one squadron's assigned wheel positions.
+`GET /api/v1/export/pace-channels/:section` exports one squadron's assigned wheel positions,
+**across both theaters, CONUS rows first**, with a `theater` column right after `section` saying
+which card a row came from. The route takes no `?theater=`: the bundle export calls the same
+`ExportChannels` with no theater to pass, so a single export and a bundled one must produce
+the same file, and `csvbulk.Selector` is untouched.
 
 **Export only, and named for what the file actually carries.**
 A comms card is a composite - two channel plans and their assignments, the LTAC and TACSAT tables, the TACTICAL MISSION NETWORK rows, the four tiers and a header - and none of that fits one CSV shape.
@@ -811,7 +930,7 @@ the amber `Print / Save PDF` button on `/pace/:section` and on the preview branc
 Never in a `?print=1` branch, which fires `window.print()` on mount.
 
 **The control is per-page, and that does not contradict the header rule.**
-CSV moved into the header because CSV export is *dataset* scoped: nine domains, five pages, three
+CSV moved into the header because CSV export is *dataset* scoped: eleven CSV datasets, five pages, three
 domains with no page at all, which is how six domains shipped exports nobody could reach. The
 dialog exists to answer "which dataset?".
 This control is *document* scoped. It exports the DOM on screen at the scale currently set, so
@@ -899,3 +1018,11 @@ The rule applies to the `Print / Save PDF` button because MUI promotes a Tooltip
 `aria-label` and the chip already has a visible label, so the two would disagree. The share trigger
 is an icon at every width, so nothing else names it: it carries a `Tooltip` **and** an explicit
 `aria-label`, which makes the promotion a no-op rather than the naming mechanism.
+
+## The page glyph
+
+`components/common/pace-icon.tsx` is the PACE entry's icon in the page picker, the Dashboard tile, the header's Add Net row and the help dialog's `@add-net` step: P, A, C, E down the left as SVG text in Barlow Condensed Bold (the face `catalog-tokens.css` already registers app-wide) with one shortening line each, rows 6 units apart so they read as four separate rows at the 15px menu size.
+Stroked-path letters were tried first and were either cramped or thin; a condensed bold is what lets four capitals stack in 24 units.
+A test that looks up the letter P on a page the header is drawn on scopes its query below the header, as `pace-editor-page.test.tsx` does.
+It replaced `@mui/icons-material`'s `SettingsInputAntenna` on 2026-10-14, after users read that glyph as male anatomy at tile size.
+A channel wheel was rendered and rejected on the way; the rule that settled it is in `feedback_icons_are_literal`: inject candidates into the live Dashboard and judge the render, never a description.

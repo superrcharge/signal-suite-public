@@ -1,3 +1,5 @@
+import type { PaceTheater } from './pace';
+
 /** Frequency units a net can be expressed in, matching the backend's closed set. */
 export const NET_FREQ_UNITS = ['MHz', 'GHz'] as const;
 export type NetFreqUnit = (typeof NET_FREQ_UNITS)[number];
@@ -22,6 +24,24 @@ export function carriedBy(netRadioType: string, radio: 'jem' | 'mpu5'): boolean 
 }
 
 /**
+ * Which theater a net serves, the same shape as the radio type: 'both' is a
+ * real answer so a net used in both theaters is entered once.
+ */
+export const NET_THEATERS = ['conus', 'oconus', 'both'] as const;
+export type NetTheater = (typeof NET_THEATERS)[number];
+
+export const NET_THEATER_LABELS: Record<NetTheater, string> = {
+  conus: 'CONUS',
+  oconus: 'OCONUS',
+  both: 'Both',
+};
+
+/** A 'both' net belongs in either theater's list. Mirrors the server's rule. */
+export function inTheater(netTheater: string, theater: PaceTheater): boolean {
+  return netTheater === 'both' || netTheater === theater;
+}
+
+/**
  * A net in the global Nets library.
  *
  * tx_freq and rx_freq are freeform strings, not numbers: a net is recorded as a
@@ -34,6 +54,8 @@ export interface Net {
   name: string;
   net_id: string;
   radio_type: string;
+  /** conus | oconus | both. */
+  theater: string;
   tx_freq: string;
   rx_freq: string;
   freq_unit: string;
@@ -56,6 +78,7 @@ export interface CreateNetRequest {
   name: string;
   net_id?: string;
   radio_type?: string;
+  theater?: string;
   tx_freq?: string;
   rx_freq?: string;
   freq_unit?: string;

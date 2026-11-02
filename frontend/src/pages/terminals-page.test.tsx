@@ -25,6 +25,7 @@ vi.mock('@/services', () => ({
   useKits: () => ({ data: undefined, isLoading: false }),
   useContracts: () => ({ data: undefined, isLoading: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   useLogout: () => ({ mutate: vi.fn() }),
   REASSIGN_TO_NONE: '__none__',
 }));

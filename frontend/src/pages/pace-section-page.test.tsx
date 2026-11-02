@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { useLocation } from 'react-router';
 
 import { renderWithRoute, screen, within } from '@/test/utils';
 import { PaceSectionPage } from './pace-section-page';
@@ -48,8 +50,15 @@ const card = {
 let cardState: { data: typeof card | undefined; isLoading: boolean; isError: boolean };
 let sectionsState: { data: { key: string; label: string; color: string; pace_enabled?: boolean }[] | undefined; isLoading: boolean };
 
+// Records what the page asked for, so a test can see the theater reach the
+// query rather than only the links.
+const paceCardCalls = vi.hoisted(() => [] as unknown[][]);
+
 vi.mock('@/services', () => ({
-  usePaceCard: () => cardState,
+  usePaceCard: (...args: unknown[]) => {
+    paceCardCalls.push(args);
+    return cardState;
+  },
   useSavePaceCard: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSections: () => sectionsState,
   useTerminals: () => ({ data: undefined, isLoading: false }),
@@ -62,6 +71,7 @@ vi.mock('@/services', () => ({
   useUpdateSection: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSection: () => ({ mutate: vi.fn(), isPending: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   REASSIGN_TO_NONE: '__none__',
 }));
 
@@ -531,5 +541,71 @@ describe('PaceSectionPage', () => {
     // The Edit button is the control that IS gated, so its absence is what
     // proves the viewer role actually took effect.
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+});
+
+describe('PaceSectionPage theater', () => {
+  const Probe = () => {
+    const loc = useLocation();
+    return <output data-testid="location">{loc.pathname + loc.search}</output>;
+  };
+
+  it('shows CONUS by default with nothing in the URL, and asks for that card', () => {
+    mockParams.section = 'asqd';
+    renderWithRoute(<><PaceSectionPage /><Probe /></>, '/pace/asqd');
+
+    expect(screen.getByRole('group', { name: 'Theater' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CONUS' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('location').textContent).toBe('/pace/asqd');
+    expect(paceCardCalls[paceCardCalls.length - 1]).toEqual(['asqd', 'conus']);
+  });
+
+  it('switching to OCONUS writes the URL, re-asks for the card, and carries into Edit and Print', async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    mockParams.section = 'asqd';
+    renderWithRoute(<><PaceSectionPage /><Probe /></>, '/pace/asqd');
+
+    await user.click(screen.getByRole('button', { name: 'OCONUS' }));
+    expect(screen.getByTestId('location').textContent).toBe('/pace/asqd?theater=oconus');
+    expect(screen.getByRole('button', { name: 'OCONUS' })).toHaveAttribute('aria-pressed', 'true');
+    expect(paceCardCalls[paceCardCalls.length - 1]).toEqual(['asqd', 'oconus']);
+
+    await user.click(screen.getByRole('button', { name: 'Print / Save PDF' }));
+    expect(String(open.mock.calls[0]?.[0])).toBe('/pace/asqd/print?theater=oconus');
+
+    // The Tooltip title is the button's accessible name.
+    await user.click(screen.getByRole('button', { name: 'Edit this card' }));
+    expect(screen.getByTestId('location').textContent).toBe('/pace/asqd/edit?theater=oconus');
+    open.mockRestore();
+  });
+
+  it('switching back to CONUS deletes the parameter rather than writing the default', async () => {
+    const user = userEvent.setup();
+    mockParams.section = 'asqd';
+    renderWithRoute(<><PaceSectionPage /><Probe /></>, '/pace/asqd?theater=oconus');
+
+    await user.click(screen.getByRole('button', { name: 'CONUS' }));
+    expect(screen.getByTestId('location').textContent).toBe('/pace/asqd');
+  });
+});
+
+describe('PaceSectionPage theater watermark', () => {
+  it('marks the sheet with the theater of the card it draws, inside the export root', () => {
+    mockParams.section = 'asqd';
+    cardState = { data: Object.assign({}, card, { theater: 'oconus' }), isLoading: false, isError: false };
+    renderWithRoute(<PaceSectionPage />, '/pace/asqd?theater=oconus');
+
+    const root = document.querySelector('[data-sheet-root]');
+    expect(root).not.toBeNull();
+    expect(within(root as HTMLElement).getByText('OCONUS')).toBeInTheDocument();
+    expect(within(root as HTMLElement).queryByText('CONUS')).toBeNull();
+  });
+
+  it('draws no mark for a card that carries no theater', () => {
+    mockParams.section = 'asqd';
+    renderWithRoute(<PaceSectionPage />, '/pace/asqd');
+    const root = document.querySelector('[data-sheet-root]') as HTMLElement;
+    expect(within(root).queryByText('CONUS')).toBeNull();
   });
 });

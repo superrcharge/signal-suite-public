@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { Box, Button, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditIcon from '@mui/icons-material/Edit';
@@ -10,6 +10,8 @@ import { LoadingSpinner, PageBanner, PageTitle } from '@/components/common';
 import { DocumentActions, paceExportSpec } from '@/components/common/sheet-export';
 import { BANNER_BTN_AMBER_SX, BANNER_BTN_PAPER_SX } from '@/components/common/banner-controls';
 import { usePaceSections } from '@/components/pace/use-pace-sections';
+import { TheaterSwitch } from '@/components/pace/TheaterSwitch';
+import { parseTheater, theaterQuery, withTheater } from '@/components/pace/theater';
 import { useAuth } from '@/contexts/auth-context';
 import { NotFoundPage } from './not-found-page';
 import '@/styles/catalog-tokens.css';
@@ -20,9 +22,13 @@ export function PaceSectionPage() {
   const { canWritePace } = useAuth();
   const { data: sections } = useSections();
   const { hasCard, isLoading: sectionsLoading } = usePaceSections();
-  const { data: card, isLoading, isError } = usePaceCard(section);
+  // Which of the squadron's two cards. Lives in the URL so a link can name
+  // the OCONUS card; CONUS is the default and stays out of it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const theater = parseTheater(searchParams.get('theater'));
+  const { data: card, isLoading, isError } = usePaceCard(section, theater);
 
-  // Only the card-bearing squadrons resolve, so /pace/esqd - or any typo -
+  // Only the card-bearing squadrons resolve, so /pace/zsqd - or any typo -
   // does not render a full card for a section that does not have one.
   //
   // The wait is not optional. Which squadrons have a card is a column on
@@ -48,7 +54,8 @@ export function PaceSectionPage() {
             a fixed PAGE_W sheet, so a PAGE_W box centred the same way puts the
             back button on the card's left edge and Print on its right. */}
         <Box sx={{ flex: 1, maxWidth: PAGE_W, mx: 'auto', display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-        {/* LEFT */}
+        {/* LEFT. flex: 1 on this side and on DocumentActions is what centres
+            the theater switch on the sheet rather than in the leftover. */}
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
           <Button
             startIcon={<ArrowBackIcon />}
@@ -68,18 +75,34 @@ export function PaceSectionPage() {
           <PageTitle noWrap>{sectionLabel}</PageTitle>
         </Box>
 
+        {/* CENTRE: the theater. Every squadron keeps a CONUS card and an
+            OCONUS card, and this is the one control that says which is on
+            screen - so it sits in the middle of the bar, on its own, where it
+            cannot be mistaken for a filter or an action. Edit and Print both
+            follow it. */}
+        <TheaterSwitch
+          value={theater}
+          onChange={(next) => {
+            setSearchParams(withTheater(searchParams, next), { replace: true });
+          }}
+        />
+
         {/* RIGHT: Edit, then share and Print - the order every printable page
             uses (see DocumentActions). Printing is a read action, so it sits
             outside the canWritePace guard: a viewer needs the sheet as much as
             an editor does. No Tooltip on Print: MUI promotes a Tooltip title to
             the child's aria-label, which would rename the control. */}
-        <DocumentActions inset={3.5} onPrint={() => window.open(`/pace/${section}/print`, '_blank')} spec={paceExportSpec(section, sectionLabel)}>
+        <DocumentActions
+          inset={3.5}
+          onPrint={() => window.open(`/pace/${section}/print${theaterQuery(theater)}`, '_blank')}
+          spec={paceExportSpec(section, sectionLabel, theater)}
+        >
           {canWritePace && (
             <Tooltip title="Edit this card">
               <Button
                 startIcon={<EditIcon />}
                 size="small"
-                onClick={() => void navigate(`/pace/${section}/edit`)}
+                onClick={() => void navigate(`/pace/${section}/edit${theaterQuery(theater)}`)}
                 variant="outlined"
                 sx={BANNER_BTN_AMBER_SX}
               >

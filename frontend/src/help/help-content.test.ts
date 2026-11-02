@@ -3,8 +3,14 @@ import { describe, expect, it } from 'vitest';
 // vite-env.d.ts) pulls the file in as a plain string at transform time - no
 // Node `fs` typings needed in a browser-targeted tsconfig.
 import ROUTER_SOURCE from '../routes/router.tsx?raw';
-import HEADER_SOURCE from '../components/layouts/header.tsx?raw';
+import NAV_ITEMS_SOURCE from '../components/layouts/nav-items.tsx?raw';
 import HELP_DIALOG_SOURCE from '../components/help/help-dialog.tsx?raw';
+import USERS_PAGE_SOURCE from '../pages/users-page.tsx?raw';
+import CATALOG_EDITOR_SOURCE from '../pages/catalog-editor-page.tsx?raw';
+import TERMINALS_PAGE_SOURCE from '../pages/terminals-page.tsx?raw';
+import KITS_PAGE_SOURCE from '../pages/kits-page.tsx?raw';
+import OPERATIONS_PAGE_SOURCE from '../pages/operations-page.tsx?raw';
+import SETTINGS_PAGE_SOURCE from '../pages/settings-page.tsx?raw';
 
 import { HELP_GROUPS, type HelpTopic } from './help-content';
 import { coverageReport, type RouteException } from './route-coverage';
@@ -61,20 +67,20 @@ function routeIsDeclared(route: string): boolean {
 
 // ─── Nav paths, parsed the same way and for the same reason ────────────────
 //
-// `navItems` in the header is the list of pages with a button pointing at them.
+// `NAV_ITEMS` in layouts/nav-items.tsx is the list of pages with a button pointing at them.
 // It bounds ROUTE_EXCEPTIONS below: a page in the nav is navigable by
 // definition, so it can never be excused as `not-navigable`.
 
-const NAV_PATHS: string[] = [...HEADER_SOURCE.matchAll(/path:\s*'([^']*)'/g)].map((m) => m[1]!);
+const NAV_PATHS: string[] = [...NAV_ITEMS_SOURCE.matchAll(/path:\s*'([^']*)'/g)].map((m) => m[1]!);
 // `alsoMatches: ['/nets']` makes PACE's nav button light up on the nets pages,
 // which makes /nets nav-reachable too. Parsed separately because it is not a
 // `path:` key.
-for (const m of HEADER_SOURCE.matchAll(/alsoMatches:\s*\[([^\]]*)\]/g)) {
+for (const m of NAV_ITEMS_SOURCE.matchAll(/alsoMatches:\s*\[([^\]]*)\]/g)) {
   for (const inner of m[1]!.matchAll(/'([^']*)'/g)) NAV_PATHS.push(inner[1]!);
 }
 
 if (NAV_PATHS.length === 0) {
-  throw new Error('Could not find any `path:` entries in layouts/header.tsx - the parser is broken.');
+  throw new Error('Could not find any `path:` entries in layouts/nav-items.tsx - the parser is broken.');
 }
 
 // ─── Routes knowingly left uncovered ───────────────────────────────────────
@@ -88,10 +94,18 @@ if (NAV_PATHS.length === 0) {
 // to-do list.
 
 const ROUTE_EXCEPTIONS: Record<string, RouteException> = {
+  // Same shape as '/': a redirect, not a page.
+  '/audit': {
+    kind: 'not-navigable',
+    reason:
+      'A redirect to /settings?tab=audit, kept so older docs and bookmarks that say "open /audit" stay ' +
+      'true. Nothing renders here and it is no longer in the page picker.',
+    coveredBy: 'audit-filter',
+  },
   '/': {
     kind: 'not-navigable',
     reason:
-      'HomeRedirect, not a page. It resolves by role to /terminals or /pace, both of which are covered, ' +
+      'HomeRedirect, not a page. It redirects to /dashboard, which is covered, ' +
       'and nothing ever renders here.',
   },
   '*': {
@@ -133,6 +147,16 @@ const ROUTE_EXCEPTIONS: Record<string, RouteException> = {
     reason: 'The read-only print view of one library tab; reached from Print / Save PDF on /catalog/comms-library.',
     coveredBy: 'print-comms-library',
   },
+  '/operations/:id/print': {
+    kind: 'not-navigable',
+    reason: 'The print view of one operation’s phases, one page each; reached from Print / Save PDF on the operation’s Web view.',
+    coveredBy: 'print-operation',
+  },
+  '/operations/:id/matrix/print': {
+    kind: 'not-navigable',
+    reason: 'The print view of one operation’s Matrix, All phases and then one page per phase; reached from Print / Save PDF on the operation’s Matrix view.',
+    coveredBy: 'print-operation-matrix',
+  },
 
   // The :param routes. A topic cannot target these without writing a concrete
   // key into the URL, and any key it wrote would be a guess about this
@@ -163,6 +187,11 @@ const ROUTE_EXCEPTIONS: Record<string, RouteException> = {
     reason: 'The card editor for one squadron, opened by Edit on that card.',
     coveredBy: 'assign-net-channel',
   },
+  '/operations/:id': {
+    kind: 'not-navigable',
+    reason: 'One operation’s page, with its participants, opened by picking that operation at /operations.',
+    coveredBy: 'join-operation',
+  },
 
   // The one editorial decision in this map. Everything above is a statement
   // about the app; this is a statement about the FAQ, which is curated content
@@ -177,6 +206,110 @@ const ROUTE_EXCEPTIONS: Record<string, RouteException> = {
       'still in the header nav; only its FAQ entry is gone.',
   },
 };
+
+// ─── Routes that refuse, and the flag each refusal is keyed on ─────────────
+//
+// `gate` means "following `route` without this permission lands on an error
+// or a refusal", so a gate is a claim about a ROUTE, and this map is the list
+// of routes that make it true. Every gated topic must route to an entry here
+// naming the same flag, and every topic routed to an entry must carry that
+// gate - the two halves are the two defects this used to test one route at a
+// time: /users handed to a viewer, and /catalog/comms-library hidden from an
+// rto who could use it.
+//
+// Keyed by the route a topic writes, query included when the query is what
+// refuses: /terminals is open to everyone, /terminals?drawer=add is not. A
+// topic route matches its exact key, or failing that the key for its path.
+//
+// `evidence` is a literal the page source must contain, and it is the code
+// that does the refusing. A map entry is otherwise a claim nothing checks, and
+// the claim goes stale the day the page stops refusing - which is how five
+// PACE topics were gated on pickers that had never refused anybody.
+
+interface Refusal {
+  gate: NonNullable<HelpTopic['gate']>;
+  file: string;
+  source: string;
+  evidence: string;
+  reason: string;
+}
+
+const REFUSALS: Record<string, Refusal> = {
+  '/users': {
+    gate: 'isAdmin',
+    file: 'pages/users-page.tsx',
+    source: USERS_PAGE_SOURCE,
+    evidence: '{errorMessage}</Alert>',
+    reason: 'GET /api/v1/users is admin-only, so any other role lands on the server\'s refusal in an error alert.',
+  },
+  // The audit log's one home since /audit became a redirect. Keyed with the
+  // query because it refuses on a different flag than plain /settings.
+  '/settings?tab=audit': {
+    gate: 'isAdmin',
+    file: 'pages/settings-page.tsx',
+    source: SETTINGS_PAGE_SOURCE,
+    evidence: 'audit: isAdmin,',
+    reason:
+      'The Audit log tab is not drawn without isAdmin, and a ?tab= the reader may not open falls back to the ' +
+      'first tab they may; GET /api/v1/audit is admin-only underneath, and AuditLog turns its 403 into ' +
+      '"The audit log is admin-only."',
+  },
+  '/catalog/editor': {
+    gate: 'canWriteRadio',
+    file: 'pages/catalog-editor-page.tsx',
+    source: CATALOG_EDITOR_SOURCE,
+    evidence: 'if (!canEditDraft) {',
+    reason:
+      'Without canWriteRadio the editor renders "You don\'t have permission to edit equipment." in place of the form. ' +
+      'An rto is not refused here - it lands on a blank radio record - which is why the gate is canWriteRadio and not canWrite.',
+  },
+  '/terminals?drawer=add': {
+    gate: 'canWrite',
+    file: 'pages/terminals-page.tsx',
+    source: TERMINALS_PAGE_SOURCE,
+    evidence: 'const drawerOpen = canWrite &&',
+    reason: 'The add drawer the query asks for is refused: a non-writer lands on the list with nothing open.',
+  },
+  '/kits?drawer=add': {
+    gate: 'canWrite',
+    file: 'pages/kits-page.tsx',
+    source: KITS_PAGE_SOURCE,
+    evidence: 'const drawerOpen = canWrite &&',
+    reason: 'As for terminals: a non-writer lands on the kits list with no drawer.',
+  },
+  '/operations?drawer=add': {
+    gate: 'canWritePace',
+    file: 'pages/operations-page.tsx',
+    source: OPERATIONS_PAGE_SOURCE,
+    evidence: 'const drawerOpen = canWritePace &&',
+    reason: 'As for terminals: a reader without canWritePace lands on the picker with no drawer.',
+  },
+  '/settings': {
+    gate: 'canWrite',
+    file: 'pages/settings-page.tsx',
+    source: SETTINGS_PAGE_SOURCE,
+    evidence: '{!canWrite && !isAdmin && (',
+    reason:
+      'Every settings topic is about the Sections or Tags panel, both rendered only for canWrite. Without it the page ' +
+      'shows neither and says which access the reader has and to contact an admin, which is a refusal in words.',
+  },
+  // Keyed with its query because the query is what refuses on a different
+  // flag: the page itself is canWrite's, but the Organizations tab is open
+  // to every canWritePace role, so an rto or a planner must keep the button.
+  '/settings?tab=organizations': {
+    gate: 'canWritePace',
+    file: 'pages/settings-page.tsx',
+    source: SETTINGS_PAGE_SOURCE,
+    evidence: 'organizations: canWritePace,',
+    reason:
+      'The Organizations tab is not drawn without canWritePace, and a ?tab= the reader may not open falls back to ' +
+      'the first tab they may, so a viewer lands on the data panel beside the access alert.',
+  },
+};
+
+function refusalFor(route: string): Refusal | undefined {
+  return REFUSALS[route] ?? REFUSALS[route.split('?')[0]!];
+}
 
 /** At most two sentences, splitting on sentence-ending punctuation followed by whitespace. */
 function sentenceCount(text: string): number {
@@ -277,16 +410,18 @@ describe('HELP_GROUPS structure', () => {
   // The defect this replaced: "What can each role do?" routed every reader to
   // /users, which is admin-only, so the topic most likely to be opened by
   // someone confused about their permissions handed a viewer a dead button.
+  // It checked /users and /audit by name; REFUSALS now holds every route that
+  // refuses, so a new one is covered by adding its entry.
   it('never routes an ungated topic at a page only some roles can open', () => {
-    const ADMIN_ONLY = ['/users', '/audit'];
     for (const topic of ALL_TOPICS) {
       if (!topic.route) continue;
-      const adminOnly = ADMIN_ONLY.some((p) => topic.route!.split('?')[0] === p);
-      if (!adminOnly) continue;
+      const refusal = refusalFor(topic.route);
+      if (!refusal) continue;
       expect(
         topic.gate,
-        `topic "${topic.id}" routes to the admin-only "${topic.route}" without gate: 'isAdmin'`,
-      ).toBe('isAdmin');
+        `topic "${topic.id}" routes to "${topic.route}", which refuses a reader without ` +
+          `${refusal.gate}, but does not carry gate: '${refusal.gate}'`,
+      ).toBe(refusal.gate);
     }
   });
 
@@ -301,18 +436,39 @@ describe('HELP_GROUPS structure', () => {
    * addressed to an `rto` - "An RTO can browse the Service Library" - while a
    * `canWrite` gate hid the button from exactly that rto. The route is a read
    * surface whose panes hide their own write controls, so no gate belongs on it.
+   *
+   * This used to name /catalog/comms-library alone, which is how five PACE
+   * topics kept a `canWritePace` gate on /nets and /pace - squadron pickers
+   * that refuse nobody - and hid their button from every viewer. It now
+   * accepts a gate only on a route REFUSALS says refuses for that same flag.
    */
   it('never gates a topic whose route refuses nobody', () => {
-    const OPEN_ROUTES = ['/catalog/comms-library'];
     for (const topic of ALL_TOPICS) {
-      if (!topic.route) continue;
-      const open = OPEN_ROUTES.some((p) => topic.route!.split('?')[0] === p);
-      if (!open) continue;
+      if (!topic.gate) continue;
+      expect(topic.route, `topic "${topic.id}" has a gate but no route for it to guard`).toBeDefined();
+      const refusal = refusalFor(topic.route!);
       expect(
-        topic.gate,
-        `topic "${topic.id}" gates "${topic.route}", which any authenticated user can open - `
-          + 'the button would be hidden from a reader who can use the page',
-      ).toBeUndefined();
+        refusal?.gate,
+        refusal
+          ? `topic "${topic.id}" gates "${topic.route}" on ${topic.gate}, but that route refuses on ${refusal.gate}`
+          : `topic "${topic.id}" gates "${topic.route}" on ${topic.gate}, and no entry in REFUSALS says that ` +
+            'route refuses anyone - the button would be hidden from a reader who can use the page',
+      ).toBe(topic.gate);
+    }
+  });
+
+  // A REFUSALS entry is a claim about a page, so it has to be checked against
+  // the page: its route must exist, and the code that refuses must still be in
+  // the source. Without this, the map is a second list that drifts.
+  it('backs every REFUSALS entry with a declared route and the code that refuses', () => {
+    for (const [route, refusal] of Object.entries(REFUSALS)) {
+      expect(routeIsDeclared(route), `REFUSALS names "${route}", which no path in routes/router.tsx matches`).toBe(true);
+      expect(
+        refusal.source.includes(refusal.evidence),
+        `REFUSALS says "${route}" refuses without ${refusal.gate}, but ${refusal.file} no longer contains ` +
+          `"${refusal.evidence}". If the page stopped refusing, drop the entry and the gates that relied on it.`,
+      ).toBe(true);
+      expect(refusal.reason.trim().length, `REFUSALS entry "${route}" has no reason`).toBeGreaterThan(0);
     }
   });
 

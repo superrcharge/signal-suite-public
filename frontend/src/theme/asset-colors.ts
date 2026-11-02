@@ -1,6 +1,6 @@
 /**
  * Asset accent colors - the single source of truth for the status, kit-type
- * and contract-urgency palettes that the terminals, kits, dashboard and
+ * and contract-urgency palettes that the terminals, kits, Stats and
  * contracts pages all draw from.
  *
  * These used to live as bare hex literals (and their rgba tints) copied across
@@ -27,7 +27,7 @@ export const PALETTE = {
 } as const;
 
 /**
- * Terminal family tiles on the dashboard. A separate concept from
+ * Terminal family tiles on the Stats page. A separate concept from
  * {@link STATUS_COLORS}: these identify a hardware family, not an operational
  * state, and they may reuse section-picker hues.
  */
@@ -39,7 +39,7 @@ export const TERMINAL_FAMILY_COLORS = {
 
 /**
  * Equipment catalog tiles. Kept separate from {@link TERMINAL_FAMILY_COLORS}
- * rather than merged: the two render in different dashboard panels, so they
+ * rather than merged: the two render in different Stats panels, so they
  * are free to reuse the same hues and only have to be distinct within a panel.
  */
 export const CATALOG_COLORS = {

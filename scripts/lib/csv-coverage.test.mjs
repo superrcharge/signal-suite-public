@@ -167,7 +167,7 @@ test('passes when the gate admits exactly the roles the route admits', () => {
 // ---------------------------------------------------------------------------
 
 test('fails when the gate is tighter than the route', () => {
-  // The direction that hid an import an rto was allowed to perform.
+  // The #236 direction that hid an import an rto was allowed to perform.
   withFixture({ writeGate: 'canWrite' }, (root) => {
     const { ok, detail } = auditCsvCoverage(root)
     assert.equal(ok, false)

@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "TAU Service API",
-    "description": "TAU Service Template API documentation",
-    "version": "1.0.0"
+    "title": "Asset Tracker API",
+    "description": "Terminal, kit and contract inventory, the Equipment Catalog with its waveform, service, transport and platform libraries, the joint compatibility matrix, the nets library and the PACE planner. Every route requires authentication except the CSV import templates, which carry no user data.",
+    "version": "v1"
   },
   "servers": [
     {
@@ -630,8 +630,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Import processed",
+          "207": {
+            "description": "Import processed - some or all rows were written, with any per-row errors listed",
             "content": {
               "application/json": {
                 "schema": {
@@ -641,11 +641,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body or empty CSV",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ImportKitsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -1362,8 +1369,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Import processed",
+          "207": {
+            "description": "Import processed - some or all rows were written, with any per-row errors listed",
             "content": {
               "application/json": {
                 "schema": {
@@ -1373,11 +1380,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body or empty CSV",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ImportTerminalsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -1468,11 +1482,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body, empty CSV, or every row failed",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ImportTerminalsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -2667,11 +2688,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body, empty CSV, or every row failed",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CsvImportResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -2783,9 +2811,23 @@
             "name": "section",
             "in": "path",
             "required": true,
-            "description": "Squadron's section key. One comms card per squadron.",
+            "description": "Squadron's section key. One comms card per squadron per theater.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "theater",
+            "in": "query",
+            "required": false,
+            "description": "Which of the squadron's two cards. Every squadron keeps one whole card per theater; conus when omitted. An unknown value is refused with PACE_INVALID_THEATER.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "conus",
+                "oconus"
+              ],
+              "default": "conus"
             }
           }
         ],
@@ -2796,6 +2838,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GetPaceCardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown theater (PACE_INVALID_THEATER)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -2834,9 +2886,23 @@
             "name": "section",
             "in": "path",
             "required": true,
-            "description": "Squadron's section key. One comms card per squadron.",
+            "description": "Squadron's section key. One comms card per squadron per theater.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "theater",
+            "in": "query",
+            "required": false,
+            "description": "Which of the squadron's two cards. Every squadron keeps one whole card per theater; conus when omitted. An unknown value is refused with PACE_INVALID_THEATER.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "conus",
+                "oconus"
+              ],
+              "default": "conus"
             }
           }
         ],
@@ -2862,7 +2928,7 @@
             }
           },
           "400": {
-            "description": "Validation error, unknown radio, the same radio sent more than once, a channel number outside the plan's channel count, the same channel assigned more than once, a malformed effective date, a channel naming a net that does not exist, a net belonging to another squadron, or a net assigned to a radio it is not carried by",
+            "description": "Validation error, unknown theater, unknown radio, the same radio sent more than once, a channel number outside the plan's channel count, the same channel assigned more than once, a malformed effective date, a channel naming a net that does not exist, a net belonging to another squadron, a net assigned to a radio it is not carried by, or a net outside the card's theater",
             "content": {
               "application/json": {
                 "schema": {
@@ -2910,7 +2976,7 @@
           "PACE"
         ],
         "summary": "Export a squadron's PACE channels as CSV",
-        "description": "Streams one squadron's assigned wheel positions as CSV, one row per assigned position across both wheels. Export-only: a channel row is meaningless without a plan and a net that already exist, so there is no template and no import. Section is required rather than optional - a card belongs to a squadron and there is no all-squadrons card to export. Any existing section key is accepted; a squadron with nothing saved yet exports a header row and no data rows, matching the empty scaffold GET /pace/{section} returns. Read-only; open to any authenticated user.",
+        "description": "Streams one squadron's assigned wheel positions as CSV, one row per assigned position across both wheels and both theaters, CONUS rows first; the theater column says which card a row came from. Export-only: a channel row is meaningless without a plan and a net that already exist, so there is no template and no import. Section is required rather than optional - a card belongs to a squadron and there is no all-squadrons card to export. Any existing section key is accepted; a squadron with nothing saved yet exports a header row and no data rows, matching the empty scaffold GET /pace/{section} returns. Read-only; open to any authenticated user.",
         "operationId": "exportPaceChannels",
         "parameters": [
           {
@@ -3289,11 +3355,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body, empty CSV, or every row failed",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CsvImportResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -3426,11 +3499,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body, empty CSV, or every row failed",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CsvImportResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -3583,11 +3663,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body, empty CSV, or every row failed",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CsvImportResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -3720,11 +3807,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body, empty CSV, or every row failed",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CsvImportResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -4881,6 +4975,61 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Equipment"
+        ],
+        "summary": "Remove an equipment photo",
+        "operationId": "deleteEquipmentPhoto",
+        "description": "Clears the record's photo and deletes the blob behind it. Recorded in the audit log as an equipment update with a `photo_url` change. Requires admin, editor, or rto; rto may remove photos from radio records only.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Equipment ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Photo removed"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller lacks a writer role, or holds rto and the record is not radio equipment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Equipment or photo not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/audit": {
@@ -5359,7 +5508,7 @@
             }
           },
           "400": {
-            "description": "Validation failed, or an abbrev the waveform library does not declare (PLATFORM_UNKNOWN_WAVEFORM), or a category or kind outside the vocabulary shape",
+            "description": "Validation failed, or an abbrev the waveform library does not declare (PLATFORM_UNKNOWN_WAVEFORM), or a category or type outside its closed list (PLATFORM_INVALID_CATEGORY, PLATFORM_INVALID_TYPE)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5443,7 +5592,7 @@
             }
           },
           "400": {
-            "description": "Validation failed, or an abbrev the waveform library does not declare (PLATFORM_UNKNOWN_WAVEFORM)",
+            "description": "Validation failed, or an abbrev the waveform library does not declare (PLATFORM_UNKNOWN_WAVEFORM), or a category or type outside its closed list (PLATFORM_INVALID_CATEGORY, PLATFORM_INVALID_TYPE)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5580,11 +5729,18 @@
             }
           },
           "400": {
-            "description": "Invalid request body, empty CSV, or every row failed",
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CsvImportResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -5676,6 +5832,1819 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "List organizations",
+        "operationId": "listOrganizations",
+        "description": "Returns the whole organizations library, which is global. Open to any authenticated user.",
+        "responses": {
+          "200": {
+            "description": "Organizations retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOrganizationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Create an organization",
+        "operationId": "createOrganization",
+        "description": "Requires admin, editor, rto, or planner - PACE's writer set, because organizations are planning reference data.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Organization created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateOrganizationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, or a key, branch or section that is not usable (ORGANIZATION_INVALID_KEY, ORGANIZATION_INVALID_BRANCH, ORGANIZATION_UNKNOWN_SECTION)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The key or name is taken, or another organization already uses the section (ORGANIZATION_KEY_EXISTS, ORGANIZATION_NAME_EXISTS, ORGANIZATION_SECTION_TAKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{key}": {
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Update an organization",
+        "operationId": "updateOrganization",
+        "description": "Partial update; omitted fields are left as they are, and the key itself never changes. Requires admin, editor, rto, or planner - PACE's writer set, because organizations are planning reference data.",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "Organization key, a lowercase slug",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Organization updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateOrganizationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, or a branch or section that is not usable (ORGANIZATION_INVALID_BRANCH, ORGANIZATION_UNKNOWN_SECTION)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken, or another organization already uses the section (ORGANIZATION_NAME_EXISTS, ORGANIZATION_SECTION_TAKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Delete an organization",
+        "operationId": "deleteOrganization",
+        "description": "Requires admin, editor, rto, or planner - PACE's writer set, because organizations are planning reference data. Refused while the organization is checked in to any operation.",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "Organization key, a lowercase slug",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Organization deleted"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The organization is checked in to one or more operations, which the message names (ORGANIZATION_IN_USE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/import": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Import organizations from CSV",
+        "operationId": "importOrganizations",
+        "description": "Bulk-imports organizations from a CSV payload. Returns the imported count and any per-row errors. Import only creates: a key that already exists, a name already taken, a section that does not exist or one another organization already links is refused on its own row, and the rest of the file still lands. Requires admin, editor, rto, or planner - PACE's writer set, because organizations are planning reference data.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CsvImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "207": {
+            "description": "Import processed - some or all rows were written, with any per-row errors listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Every row failed: the ordinary success envelope, carrying the full per-row report, so read the body before treating the status as an error. Or the request itself was refused - invalid body, empty CSV, a header without the identity column, or a column that belongs to an export - as an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CsvImportResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/import/template": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Download organization import CSV template",
+        "operationId": "getOrganizationsImportTemplate",
+        "security": [],
+        "description": "Returns the organization import CSV template. The template carries no user data, so it needs no authentication - it is registered ahead of the group's auth middleware for that reason. Columns are declared once per domain as a csvtable.Table, so the template, the export and the importer cannot describe different column sets.",
+        "parameters": [
+          {
+            "name": "columns",
+            "in": "query",
+            "description": "Comma-separated column subset (empty = all, canonical order)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV template returned",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/organizations": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Export organizations as CSV",
+        "operationId": "exportOrganizations",
+        "description": "Streams a CSV of the organizations library, with the key as the first column. Read-only; open to any authenticated user.",
+        "parameters": [
+          {
+            "name": "columns",
+            "in": "query",
+            "description": "Comma-separated column subset (empty = all, canonical order)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file returned",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "List operations",
+        "operationId": "listOperations",
+        "description": "Returns every operation with its participant count, most recent start date first. Open to any authenticated user.",
+        "responses": {
+          "200": {
+            "description": "Operations retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOperationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Create an operation",
+        "operationId": "createOperation",
+        "description": "Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOperationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Operation created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, a status outside the closed list (OPERATION_INVALID_STATUS), or dates that are not YYYY-MM-DD or end before they start (OPERATION_INVALID_DATES)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another operation already uses this name (OPERATION_NAME_EXISTS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Get an operation",
+        "operationId": "getOperation",
+        "description": "Returns the operation and every organization checked in to it, ordered by organization name. Open to any authenticated user.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetOperationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Update an operation",
+        "operationId": "updateOperation",
+        "description": "Partial update; omitted fields are left as they are, and a blank date clears it. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOperationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, an invalid status (OPERATION_INVALID_STATUS) or invalid dates (OPERATION_INVALID_DATES)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another operation already uses this name (OPERATION_NAME_EXISTS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Delete an operation",
+        "operationId": "deleteOperation",
+        "description": "Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data. Its check-ins are deleted with it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Operation deleted"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/phases": {
+      "put": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Replace an operation's phases",
+        "operationId": "saveOperationPhases",
+        "description": "Ordered replace-all of the operation's phases, in one transaction. An entry with an id is kept (renamed, repositioned), one without is inserted, and an existing phase left out is deleted along with its asset rows. A new phase starts with the asset rows of the phase immediately before it in the new order; a new first phase starts with none. A list that changes nothing writes nothing. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavePhasesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Phases replaced; the list in its new order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavePhasesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, an empty list (OPERATION_PHASES_REQUIRED), a name that is blank or over 60 characters (OPERATION_PHASE_NAME_INVALID), or an id that is not a phase of this operation (OPERATION_UNKNOWN_PHASE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found (OPERATION_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Two phases share a name, case-insensitively (OPERATION_PHASE_NAME_EXISTS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/phases/{phase_id}/plan": {
+      "put": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Replace one phase's plan",
+        "operationId": "saveOperationPhasePlan",
+        "description": "Replaces the phase's whole plan in one transaction: the participant it supports (null for none), where each participant sits in this phase (a participant absent from placements is not placed), and the pairs of participants that must be able to talk. A pair is stored with a < b, so either order is accepted, and a repeated pair collapses to one; a pair already stored keeps its id. A plan that changes nothing writes nothing and records nothing. Deleting a participant removes its placements and requirements and clears it as the supported participant; deleting a site removes the placements at it. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "phase_id",
+            "in": "path",
+            "required": true,
+            "description": "Phase ID, a phase of this operation",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavePhasePlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The phase as GET /operations/{id} returns it, not wrapped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhaseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, two requirements naming one participant (OPERATION_REQUIREMENT_SELF), a site that is not this operation's (OPERATION_UNKNOWN_SITE), or a phase that is not this operation's (OPERATION_UNKNOWN_PHASE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found (OPERATION_NOT_FOUND), or a participant that is not checked in to this operation (PARTICIPANT_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/rfis": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "List an operation's RFIs",
+        "operationId": "listOperationRfis",
+        "description": "Every RFI raised on the operation with its thread of replies in one response: open ones first, newest first, then resolved ones, most recently resolved first. Replies are oldest first. Any authenticated role may read.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The operation's RFIs, [] when there are none",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListRFIsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found (OPERATION_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Raise an RFI",
+        "operationId": "createOperationRfi",
+        "description": "Posts a request for information as one of the operation's checked-in units. The posting unit is picked from the roster, because a user has no organization of their own. The poster's display name and local user id are stored from the session; the id is what later decides who may resolve the RFI. The question is trimmed and must be 1 to 2000 characters. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRFIRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "RFI created, open, with no replies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RFIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, or a question that is blank or over 2000 characters (RFI_QUESTION_INVALID)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found (OPERATION_NOT_FOUND), or a participant that is not checked in to this operation (PARTICIPANT_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/rfis/{rfi_id}/comments": {
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Reply to an RFI",
+        "operationId": "addOperationRfiComment",
+        "description": "Appends a reply to the RFI's flat thread. Anyone who may write to operations can reply, not only the poster. Replies are allowed on open RFIs only. The body is trimmed and must be 1 to 2000 characters. Returns the whole RFI. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "rfi_id",
+            "in": "path",
+            "required": true,
+            "description": "RFI ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRFICommentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Reply added; the RFI with its thread",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RFIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, or a reply that is blank or over 2000 characters (RFI_COMMENT_INVALID)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found (OPERATION_NOT_FOUND), or an RFI that is not this operation's (RFI_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The RFI is already resolved (RFI_RESOLVED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/rfis/{rfi_id}/resolve": {
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Resolve an RFI",
+        "operationId": "resolveOperationRfi",
+        "description": "Marks an open RFI resolved, recording who and when. Only the user who posted the RFI can resolve it - not their organization and not an admin - so a caller who is not the poster is refused with RFI_NOT_POSTER. There is no reopen. The request has no body. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "rfi_id",
+            "in": "path",
+            "required": true,
+            "description": "RFI ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RFI resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RFIResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller lacks the role this route requires, or is not the user who posted the RFI (RFI_NOT_POSTER)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found (OPERATION_NOT_FOUND), or an RFI that is not this operation's (RFI_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The RFI is already resolved (RFI_RESOLVED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/sites": {
+      "put": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Replace an operation's sites",
+        "operationId": "saveOperationSites",
+        "description": "Ordered replace-all of the operation's sites, in one transaction. An entry with an id is kept (renamed, repositioned), one without is inserted, and an existing site left out is deleted along with the placements at it. Unlike phases an empty list is allowed, since an operation need not use sites. There is no carry-forward: a new site starts empty. A list that changes nothing writes nothing. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSitesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sites replaced; the list in its new order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveSitesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, a name that is blank or over 60 characters (OPERATION_SITE_NAME_INVALID), or an id that is not a site of this operation (OPERATION_UNKNOWN_SITE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found (OPERATION_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Two sites share a name, case-insensitively (OPERATION_SITE_NAME_EXISTS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/participants/{org_key}": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Get a check-in",
+        "operationId": "getParticipant",
+        "description": "Returns one organization's check-in to the operation. Open to any authenticated user.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "org_key",
+            "in": "path",
+            "required": true,
+            "description": "Organization key, a lowercase slug",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Check-in retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetParticipantResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization is not checked in to this operation (PARTICIPANT_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Save a check-in",
+        "operationId": "saveParticipant",
+        "description": "Upsert keyed by operation and organization: 201 when the organization was not yet checked in, 200 when an existing check-in was replaced. The body replaces all four lists and the contact fields. A save that changes nothing writes nothing. Send expected_updated_at, the updated_at last read, to refuse a save over a newer version. Send asset_phases to say which phases each asset is present in, see the request schema. The check-in and its asset rows are written in one transaction. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "org_key",
+            "in": "path",
+            "required": true,
+            "description": "Organization key, a lowercase slug",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveParticipantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing check-in replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveParticipantResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Check-in created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveParticipantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, an organization that does not exist (PARTICIPANT_UNKNOWN_ORGANIZATION), or an abbrev the waveform library does not declare (PARTICIPANT_UNKNOWN_WAVEFORM), an asset_phases key the check-in does not bring (PARTICIPANT_UNKNOWN_ASSET), or a phase id the operation does not have (OPERATION_UNKNOWN_PHASE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The check-in changed or was removed since expected_updated_at was read (PARTICIPANT_STALE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Remove a check-in",
+        "operationId": "deleteParticipant",
+        "description": "Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "org_key",
+            "in": "path",
+            "required": true,
+            "description": "Organization key, a lowercase slug",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Check-in removed"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found, or the organization is not checked in (PARTICIPANT_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/participants": {
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Check an organization in",
+        "operationId": "createParticipant",
+        "description": "Checks in either a library organization (organization_key) or an \"Other\" organization named only inside this operation (adhoc), never both and never neither. An ad hoc organization lives on the check-in row and is never added to the organization library; its name is unique per operation, case-insensitively. Unlike the PUT by organization key this never upserts. Send asset_phases to say which phases each asset is present in, see the request schema. The check-in and its asset rows are written in one transaction. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateParticipantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Check-in created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveParticipantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, neither or both identities (PARTICIPANT_IDENTITY_REQUIRED), an organization that does not exist (PARTICIPANT_UNKNOWN_ORGANIZATION), an invalid ad hoc branch (PARTICIPANT_INVALID_BRANCH), or an abbrev the waveform library does not declare (PARTICIPANT_UNKNOWN_WAVEFORM), an asset_phases key the check-in does not bring (PARTICIPANT_UNKNOWN_ASSET), or a phase id the operation does not have (OPERATION_UNKNOWN_PHASE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The library organization is already checked in (PARTICIPANT_STALE), or an ad hoc organization with that name is (PARTICIPANT_ADHOC_NAME_EXISTS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operations/{id}/participants/id/{pid}": {
+      "patch": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Update a check-in by id",
+        "operationId": "updateParticipantByID",
+        "description": "Replaces the four lists and the contact fields of one check-in addressed by its own id, the only way to reach an ad hoc organization. The identity cannot change. A save that changes nothing writes nothing. Send expected_updated_at to refuse a save over a newer version. Send asset_phases to say which phases each asset is present in, see the request schema. The check-in and its asset rows are written in one transaction. Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "description": "Participant ID, the check-in's own id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateParticipantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Check-in updated, or unchanged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveParticipantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed, or an abbrev the waveform library does not declare (PARTICIPANT_UNKNOWN_WAVEFORM), an asset_phases key the check-in does not bring (PARTICIPANT_UNKNOWN_ASSET), or a phase id the operation does not have (OPERATION_UNKNOWN_PHASE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found, or no such check-in (PARTICIPANT_NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The check-in changed or was removed since expected_updated_at was read (PARTICIPANT_STALE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Remove a check-in by id",
+        "operationId": "deleteParticipantByID",
+        "description": "Requires admin, editor, rto, or planner - PACE's writer set, because operations are joint planning data.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operation ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "description": "Participant ID, the check-in's own id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Check-in removed"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The caller is authenticated but lacks the role this route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found, or no such check-in (PARTICIPANT_NOT_FOUND)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7407,6 +9376,15 @@
             ],
             "description": "Which radio carries this net. 'both' appears under either wheel."
           },
+          "theater": {
+            "type": "string",
+            "enum": [
+              "conus",
+              "oconus",
+              "both"
+            ],
+            "description": "Which theater's list this net is in. 'both' appears under either."
+          },
           "tx_freq": {
             "type": "string",
             "description": "Transmit frequency. Freeform: a figure, a range, or a placeholder."
@@ -7501,6 +9479,17 @@
             "default": "both",
             "maxLength": 10
           },
+          "theater": {
+            "type": "string",
+            "enum": [
+              "conus",
+              "oconus",
+              "both"
+            ],
+            "description": "Which theater's list this net is in. Empty defaults to 'conus'. A name is unique among the nets a theater's list shows, so a 'both' net and a 'conus' net cannot share one.",
+            "default": "conus",
+            "maxLength": 10
+          },
           "tx_freq": {
             "type": "string",
             "description": "Freeform transmit frequency",
@@ -7561,6 +9550,16 @@
               "both"
             ],
             "description": "Which radio carries this net",
+            "maxLength": 10
+          },
+          "theater": {
+            "type": "string",
+            "enum": [
+              "conus",
+              "oconus",
+              "both"
+            ],
+            "description": "Which theater's list this net is in. Moving a net into a theater where its name is already taken is refused with NET_NAME_EXISTS.",
             "maxLength": 10
           },
           "tx_freq": {
@@ -8036,6 +10035,14 @@
             "type": "string",
             "description": "Squadron's section key"
           },
+          "theater": {
+            "type": "string",
+            "enum": [
+              "conus",
+              "oconus"
+            ],
+            "description": "Which of the squadron's two cards this is"
+          },
           "title": {
             "type": "string",
             "description": "Centred on the sheet. Names the exercise or operation the card is for."
@@ -8314,6 +10321,16 @@
             "type": "string",
             "description": "Free text"
           },
+          "owned_by": {
+            "type": "string",
+            "description": "Ultimate controlling parent of the operator. The operator itself when nothing controls it; the government body for a state system.",
+            "maxLength": 120
+          },
+          "owner_country": {
+            "type": "string",
+            "description": "Country the owner is headquartered in, as a plain English name.",
+            "maxLength": 60
+          },
           "created_by": {
             "type": "string",
             "description": "Name of the creating user"
@@ -8338,6 +10355,8 @@
           "abbrev",
           "name",
           "description",
+          "owned_by",
+          "owner_country",
           "created_by",
           "updated_by",
           "created_at",
@@ -8365,6 +10384,16 @@
             "type": "string",
             "description": "Free text",
             "maxLength": 250
+          },
+          "owned_by": {
+            "type": "string",
+            "description": "Ultimate controlling parent of the operator. The operator itself when nothing controls it; the government body for a state system.",
+            "maxLength": 120
+          },
+          "owner_country": {
+            "type": "string",
+            "description": "Country the owner is headquartered in, as a plain English name.",
+            "maxLength": 60
           }
         }
       },
@@ -8387,6 +10416,16 @@
             "type": "string",
             "description": "Free text",
             "maxLength": 250
+          },
+          "owned_by": {
+            "type": "string",
+            "description": "Ultimate controlling parent of the operator. The operator itself when nothing controls it; the government body for a state system.",
+            "maxLength": 120
+          },
+          "owner_country": {
+            "type": "string",
+            "description": "Country the owner is headquartered in, as a plain English name.",
+            "maxLength": 60
           }
         }
       },
@@ -8463,7 +10502,7 @@
       },
       "CsvImportResponse": {
         "type": "object",
-        "description": "The import result shared by every domain that imports through csvhttp. 207 whenever anything was written, including a completely clean import; 400 only when every row failed.",
+        "description": "The import result shared by every domain that imports through csvhttp. 207 whenever anything was written, including a completely clean import; 400 when every row failed, still in this shape. Each row number is the line of the uploaded file, counting the template comment lines when they are left in.",
         "properties": {
           "success": {
             "type": "boolean",
@@ -8502,7 +10541,9 @@
               "equipment",
               "kits",
               "nets",
+              "organizations",
               "pace-channels",
+              "platforms",
               "services",
               "terminals",
               "transports",
@@ -8600,6 +10641,16 @@
             "type": "string",
             "maxLength": 500
           },
+          "owned_by": {
+            "type": "string",
+            "description": "Ultimate controlling parent of the operator. The operator itself when nothing controls it; the government body for a state system.",
+            "maxLength": 120
+          },
+          "owner_country": {
+            "type": "string",
+            "description": "Country the owner is headquartered in, as a plain English name.",
+            "maxLength": 60
+          },
           "created_by": {
             "type": "string"
           },
@@ -8618,7 +10669,9 @@
           "name",
           "kind",
           "provider",
-          "description"
+          "description",
+          "owned_by",
+          "owner_country"
         ]
       },
       "ListTransportsResponse": {
@@ -8659,6 +10712,16 @@
           "description": {
             "type": "string",
             "maxLength": 500
+          },
+          "owned_by": {
+            "type": "string",
+            "description": "Ultimate controlling parent of the operator. The operator itself when nothing controls it; the government body for a state system.",
+            "maxLength": 120
+          },
+          "owner_country": {
+            "type": "string",
+            "description": "Country the owner is headquartered in, as a plain English name.",
+            "maxLength": 60
           }
         },
         "required": [
@@ -8684,6 +10747,16 @@
           "description": {
             "type": "string",
             "maxLength": 500
+          },
+          "owned_by": {
+            "type": "string",
+            "description": "Ultimate controlling parent of the operator. The operator itself when nothing controls it; the government body for a state system.",
+            "maxLength": 120
+          },
+          "owner_country": {
+            "type": "string",
+            "description": "Country the owner is headquartered in, as a plain English name.",
+            "maxLength": 60
           }
         }
       },
@@ -9110,17 +11183,32 @@
             "maxLength": 120
           },
           "category": {
-            "type": "string",
-            "description": "Default joint. Suggestions: organic, joint, coalition. Open vocabulary, normalised to lowercase, trimmed, internal whitespace collapsed, underscores to spaces; anything outside [a-z0-9 -] up to 40 characters is refused with PLATFORM_INVALID_CATEGORY or PLATFORM_INVALID_KIND."
+            "type": "array",
+            "maxItems": 7,
+            "description": "The branch or branches operating the platform. Closed list: USA, USMC, USN, USAF, USSF, USCG, OGA (other government agency). Branch names such as \"Air Force\" and any case are accepted; stored as abbreviations, deduplicated, in that order of precedence. Anything else is refused with PLATFORM_INVALID_CATEGORY. Empty means no branch set.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "USA",
+                "USMC",
+                "USN",
+                "USAF",
+                "USSF",
+                "USCG",
+                "OGA"
+              ]
+            }
           },
-          "kind": {
+          "type": {
             "type": "string",
-            "description": "Default aircraft. Suggestions: aircraft, ship, ground vehicle, ground station. Open vocabulary, normalised to lowercase, trimmed, internal whitespace collapsed, underscores to spaces; anything outside [a-z0-9 -] up to 40 characters is refused with PLATFORM_INVALID_CATEGORY or PLATFORM_INVALID_KIND."
-          },
-          "operator": {
-            "type": "string",
-            "maxLength": 120,
-            "description": "Service or nation"
+            "enum": [
+              "aircraft",
+              "uav",
+              "ship",
+              "ground vehicle",
+              "ground station"
+            ],
+            "description": "Closed list. Case, surrounding space, repeated spaces and underscores are normalised; anything else is refused with PLATFORM_INVALID_TYPE. Blank on create becomes aircraft."
           },
           "waveform_abbrevs": {
             "type": "array",
@@ -9158,8 +11246,7 @@
           "designation",
           "popular_name",
           "category",
-          "kind",
-          "operator",
+          "type",
           "waveform_abbrevs",
           "equipment_ids",
           "notes"
@@ -9200,16 +11287,32 @@
             "maxLength": 120
           },
           "category": {
-            "type": "string",
-            "description": "Open vocabulary, normalised to lowercase, trimmed, internal whitespace collapsed, underscores to spaces; anything outside [a-z0-9 -] up to 40 characters is refused with PLATFORM_INVALID_CATEGORY or PLATFORM_INVALID_KIND."
+            "type": "array",
+            "maxItems": 7,
+            "description": "The branch or branches operating the platform. Closed list: USA, USMC, USN, USAF, USSF, USCG, OGA (other government agency). Branch names such as \"Air Force\" and any case are accepted; stored as abbreviations, deduplicated, in that order of precedence. Anything else is refused with PLATFORM_INVALID_CATEGORY. Empty means no branch set.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "USA",
+                "USMC",
+                "USN",
+                "USAF",
+                "USSF",
+                "USCG",
+                "OGA"
+              ]
+            }
           },
-          "kind": {
+          "type": {
             "type": "string",
-            "description": "Open vocabulary, normalised to lowercase, trimmed, internal whitespace collapsed, underscores to spaces; anything outside [a-z0-9 -] up to 40 characters is refused with PLATFORM_INVALID_CATEGORY or PLATFORM_INVALID_KIND."
-          },
-          "operator": {
-            "type": "string",
-            "maxLength": 120
+            "enum": [
+              "aircraft",
+              "uav",
+              "ship",
+              "ground vehicle",
+              "ground station"
+            ],
+            "description": "Closed list. Case, surrounding space, repeated spaces and underscores are normalised; anything else is refused with PLATFORM_INVALID_TYPE. Blank on create becomes aircraft."
           },
           "waveform_abbrevs": {
             "type": "array",
@@ -9247,16 +11350,32 @@
             "maxLength": 120
           },
           "category": {
-            "type": "string",
-            "description": "Open vocabulary, normalised to lowercase, trimmed, internal whitespace collapsed, underscores to spaces; anything outside [a-z0-9 -] up to 40 characters is refused with PLATFORM_INVALID_CATEGORY or PLATFORM_INVALID_KIND."
+            "type": "array",
+            "maxItems": 7,
+            "description": "The branch or branches operating the platform. Closed list: USA, USMC, USN, USAF, USSF, USCG, OGA (other government agency). Branch names such as \"Air Force\" and any case are accepted; stored as abbreviations, deduplicated, in that order of precedence. Anything else is refused with PLATFORM_INVALID_CATEGORY. Empty means no branch set.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "USA",
+                "USMC",
+                "USN",
+                "USAF",
+                "USSF",
+                "USCG",
+                "OGA"
+              ]
+            }
           },
-          "kind": {
+          "type": {
             "type": "string",
-            "description": "Open vocabulary, normalised to lowercase, trimmed, internal whitespace collapsed, underscores to spaces; anything outside [a-z0-9 -] up to 40 characters is refused with PLATFORM_INVALID_CATEGORY or PLATFORM_INVALID_KIND."
-          },
-          "operator": {
-            "type": "string",
-            "maxLength": 120
+            "enum": [
+              "aircraft",
+              "uav",
+              "ship",
+              "ground vehicle",
+              "ground station"
+            ],
+            "description": "Closed list. Case, surrounding space, repeated spaces and underscores are normalised; anything else is refused with PLATFORM_INVALID_TYPE. Blank on create becomes aircraft."
           },
           "waveform_abbrevs": {
             "type": "array",
@@ -9300,6 +11419,1260 @@
         },
         "required": [
           "platform"
+        ]
+      },
+      "OrganizationResponse": {
+        "type": "object",
+        "description": "A participant an operation can check in. The key is the identity and never changes.",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "Lowercase slug: letters, digits and underscores, not starting with an underscore."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Unique, case-insensitive."
+          },
+          "short_label": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "branch": {
+            "type": "string",
+            "description": "One of USA, USMC, USN, USAF, USSF, USCG, OGA, or empty when the organization is not a service component.",
+            "enum": [
+              "",
+              "USA",
+              "USMC",
+              "USN",
+              "USAF",
+              "USSF",
+              "USCG",
+              "OGA"
+            ]
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "section_key": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "The squadron this organization maps to, or empty. A section maps to at most one organization."
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "updated_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "operation_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many distinct operations have this organization checked in, computed on read. Ad hoc participants count for nothing. While it is above 0, a delete is refused with ORGANIZATION_IN_USE."
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "short_label",
+          "branch",
+          "color",
+          "section_key",
+          "notes",
+          "operation_count"
+        ]
+      },
+      "ListOrganizationsResponse": {
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationResponse"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "organizations",
+          "total"
+        ]
+      },
+      "CreateOrganizationResponse": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationResponse"
+          }
+        },
+        "required": [
+          "organization"
+        ]
+      },
+      "UpdateOrganizationResponse": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationResponse"
+          }
+        },
+        "required": [
+          "organization"
+        ]
+      },
+      "CreateOrganizationRequest": {
+        "type": "object",
+        "description": "The key is normalised to lowercase and must be unused. A section_key must name an existing section.",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "short_label": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "branch": {
+            "type": "string",
+            "maxLength": 8,
+            "description": "Branch names such as \"Army\" and any case are accepted and stored as the abbreviation. Blank means not a service component. Anything else is refused with ORGANIZATION_INVALID_BRANCH."
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "section_key": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "UpdateOrganizationRequest": {
+        "type": "object",
+        "description": "PATCH is a partial update: an omitted field is left as it is. A blank branch or section_key clears it.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "short_label": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "branch": {
+            "type": "string",
+            "maxLength": 8,
+            "description": "Branch names such as \"Army\" and any case are accepted and stored as the abbreviation. Blank means not a service component. Anything else is refused with ORGANIZATION_INVALID_BRANCH."
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "section_key": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "OperationResponse": {
+        "type": "object",
+        "description": "A named effort organizations check in to.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Unique, case-insensitive."
+          },
+          "acronym": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Optional; stored upper-case so the operation can show as \"Operation XXX\". Blank for none."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planning",
+              "active",
+              "complete"
+            ]
+          },
+          "start_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD, or empty when not set."
+          },
+          "end_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD, or empty when not set. Never before start_date."
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "updated_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "participant_count": {
+            "type": "integer",
+            "description": "How many organizations are checked in."
+          },
+          "open_rfi_count": {
+            "type": "integer",
+            "description": "How many RFIs on the operation are still open."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "acronym",
+          "status",
+          "start_date",
+          "end_date",
+          "notes",
+          "participant_count"
+        ]
+      },
+      "OrganizationSummary": {
+        "type": "object",
+        "description": "The slice of an organization a check-in displays, joined in on read.",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "short_label": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "adhoc": {
+            "type": "boolean",
+            "description": "True for an \"Other\" organization that exists only on this check-in; its key is then empty."
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "short_label",
+          "branch",
+          "color",
+          "adhoc"
+        ]
+      },
+      "ParticipantResponse": {
+        "type": "object",
+        "description": "One organization's check-in to one operation.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_key": {
+            "type": "string"
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationSummary"
+          },
+          "equipment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Catalog record ids, satcom and radio. An id naming a deleted record is kept."
+          },
+          "platform_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "maxItems": 32,
+            "description": "Platform Library ids the participant brings (airframe, UAV, ship, vehicle, ground station), declared before its radios. De-duplicated. An id naming a deleted platform is kept."
+          },
+          "waveform_abbrevs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Each must exist in the waveform library."
+          },
+          "service_abbrevs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Service abbrevs, plain strings."
+          },
+          "transport_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "description": "Transport library ids."
+          },
+          "poc_name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "poc_phone": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "poc_email": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "updated_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "RFC 3339. Echo it back as expected_updated_at to guard a save."
+          },
+          "asset_phases": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "description": "Each asset the participant brings (platform, catalog record or transport id) mapped to the ids of the phases it is present in, in phase order. An asset in no phase maps to an empty list. Never null."
+          }
+        },
+        "required": [
+          "id",
+          "operation_id",
+          "organization_key",
+          "organization",
+          "equipment_ids",
+          "platform_ids",
+          "waveform_abbrevs",
+          "service_abbrevs",
+          "transport_ids",
+          "poc_name",
+          "poc_phone",
+          "poc_email",
+          "notes",
+          "updated_at"
+        ]
+      },
+      "ListOperationsResponse": {
+        "type": "object",
+        "properties": {
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationResponse"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operations",
+          "total"
+        ]
+      },
+      "GetOperationResponse": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/OperationResponse"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ParticipantResponse"
+            }
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhaseResponse"
+            },
+            "description": "The operation's phases in order. Never null."
+          },
+          "sites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteResponse"
+            },
+            "description": "The operation's sites (locations) in order. Never null."
+          }
+        },
+        "required": [
+          "operation",
+          "participants",
+          "phases",
+          "sites"
+        ]
+      },
+      "CreateOperationResponse": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/OperationResponse"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "UpdateOperationResponse": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/OperationResponse"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "GetParticipantResponse": {
+        "type": "object",
+        "properties": {
+          "participant": {
+            "$ref": "#/components/schemas/ParticipantResponse"
+          }
+        },
+        "required": [
+          "participant"
+        ]
+      },
+      "SaveParticipantResponse": {
+        "type": "object",
+        "properties": {
+          "participant": {
+            "$ref": "#/components/schemas/ParticipantResponse"
+          }
+        },
+        "required": [
+          "participant"
+        ]
+      },
+      "CreateOperationRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "description": "Uniqueness is case-insensitive on name. A blank status means planning.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "acronym": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Optional; stored upper-case so the operation can show as \"Operation XXX\". Blank for none."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planning",
+              "active",
+              "complete"
+            ]
+          },
+          "start_date": {
+            "type": "string",
+            "maxLength": 10,
+            "description": "YYYY-MM-DD"
+          },
+          "end_date": {
+            "type": "string",
+            "maxLength": 10,
+            "description": "YYYY-MM-DD; not before start_date"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        }
+      },
+      "UpdateOperationRequest": {
+        "type": "object",
+        "description": "PATCH is a partial update: an omitted field is left as it is. A blank start_date or end_date clears it.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "acronym": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Optional; stored upper-case. A blank value clears it."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planning",
+              "active",
+              "complete"
+            ]
+          },
+          "start_date": {
+            "type": "string",
+            "maxLength": 10
+          },
+          "end_date": {
+            "type": "string",
+            "maxLength": 10
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        }
+      },
+      "SaveParticipantRequest": {
+        "type": "object",
+        "description": "Replaces the whole check-in: all four lists and the contact fields are stored as sent, so an omitted list becomes empty. An abbrev the waveform library does not declare is refused with PARTICIPANT_UNKNOWN_WAVEFORM.",
+        "properties": {
+          "equipment_ids": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "platform_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "maxItems": 32,
+            "description": "Platform Library ids the participant brings (airframe, UAV, ship, vehicle, ground station), declared before its radios. De-duplicated. An id naming a deleted platform is kept."
+          },
+          "waveform_abbrevs": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "service_abbrevs": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "transport_ids": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          "poc_name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "poc_phone": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "poc_email": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "expected_updated_at": {
+            "type": "string",
+            "description": "The updated_at last read, as returned. When present and not equal to the stored value the save is refused with PARTICIPANT_STALE. Omit it on a first save."
+          },
+          "asset_phases": {
+            "type": "object",
+            "nullable": true,
+            "maxProperties": 64,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "description": "Asset id to the phase ids it is present in. Omit or send null to leave the stored rows alone: an asset newly added to the lists then goes into every phase, and an asset removed from them loses its rows. When sent, each key must be one of the check-in's own platform_ids, equipment_ids or transport_ids (PARTICIPANT_UNKNOWN_ASSET) and each phase id a phase of this operation (OPERATION_UNKNOWN_PHASE). An asset in the lists but missing from the map is placed in every phase; an empty list means brought, in no phase."
+          }
+        }
+      },
+      "AdhocOrganization": {
+        "type": "object",
+        "description": "An \"Other\" partner named only inside one operation. It is never added to the organization library.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "short_label": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "branch": {
+            "type": "string",
+            "maxLength": 8,
+            "description": "A branch or an alias such as Army, stored canonical. Blank for none."
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateParticipantRequest": {
+        "type": "object",
+        "description": "Replaces the whole check-in addressed by id: all four lists and the contact fields are stored as sent, so an omitted list becomes empty.",
+        "properties": {
+          "equipment_ids": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "platform_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "maxItems": 32,
+            "description": "Platform Library ids the participant brings (airframe, UAV, ship, vehicle, ground station), declared before its radios. De-duplicated. An id naming a deleted platform is kept."
+          },
+          "waveform_abbrevs": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "service_abbrevs": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "transport_ids": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          "poc_name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "poc_phone": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "poc_email": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "expected_updated_at": {
+            "type": "string",
+            "description": "The updated_at last read, as returned. When present and not equal to the stored value the save is refused with PARTICIPANT_STALE. Omit it on a first save."
+          },
+          "asset_phases": {
+            "type": "object",
+            "nullable": true,
+            "maxProperties": 64,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "description": "Asset id to the phase ids it is present in. Omit or send null to leave the stored rows alone: an asset newly added to the lists then goes into every phase, and an asset removed from them loses its rows. When sent, each key must be one of the check-in's own platform_ids, equipment_ids or transport_ids (PARTICIPANT_UNKNOWN_ASSET) and each phase id a phase of this operation (OPERATION_UNKNOWN_PHASE). An asset in the lists but missing from the map is placed in every phase; an empty list means brought, in no phase."
+          }
+        }
+      },
+      "CreateParticipantRequest": {
+        "type": "object",
+        "description": "Names either a library organization or an ad hoc one, not both and not neither, plus what it brings. An omitted list is empty.",
+        "properties": {
+          "organization_key": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "A library organization's key. Omit when adhoc is sent."
+          },
+          "adhoc": {
+            "$ref": "#/components/schemas/AdhocOrganization"
+          },
+          "equipment_ids": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "platform_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "maxItems": 32,
+            "description": "Platform Library ids the participant brings (airframe, UAV, ship, vehicle, ground station), declared before its radios. De-duplicated. An id naming a deleted platform is kept."
+          },
+          "waveform_abbrevs": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "service_abbrevs": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "transport_ids": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          "poc_name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "poc_phone": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "poc_email": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "asset_phases": {
+            "type": "object",
+            "nullable": true,
+            "maxProperties": 64,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "description": "Asset id to the phase ids it is present in. Omit or send null to leave the stored rows alone: an asset newly added to the lists then goes into every phase, and an asset removed from them loses its rows. When sent, each key must be one of the check-in's own platform_ids, equipment_ids or transport_ids (PARTICIPANT_UNKNOWN_ASSET) and each phase id a phase of this operation (OPERATION_UNKNOWN_PHASE). An asset in the lists but missing from the map is placed in every phase; an empty list means brought, in no phase."
+          }
+        }
+      },
+      "PhaseResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "description": "Index in the operation's order, from 0."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "supported_participant_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "The participant this phase supports, or null for none."
+          },
+          "placements": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Participant id to the id of the site it sits at in this phase. A participant absent from the map is not placed. Never null."
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequirementResponse"
+            },
+            "description": "The pairs of participants that must be able to talk in this phase, ordered by a then b. Never null."
+          }
+        },
+        "required": [
+          "id",
+          "operation_id",
+          "position",
+          "name",
+          "supported_participant_id",
+          "placements",
+          "requirements"
+        ]
+      },
+      "SavePhasesRequest": {
+        "type": "object",
+        "description": "The operation's whole ordered phase list; positions are the array index.",
+        "properties": {
+          "phases": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "description": "A phase of this operation to keep, renamed or repositioned. Omit for a new phase."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60,
+                  "description": "Trimmed; unique within the request, case-insensitively."
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "phases"
+        ]
+      },
+      "SavePhasesResponse": {
+        "type": "object",
+        "properties": {
+          "phases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhaseResponse"
+            }
+          }
+        },
+        "required": [
+          "phases"
+        ]
+      },
+      "RequirementResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "a": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A participant id, sorting before b."
+          },
+          "b": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "a",
+          "b"
+        ]
+      },
+      "RFICommentResponse": {
+        "type": "object",
+        "description": "One reply in an RFI's flat thread.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rfi_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "created_by": {
+            "type": "string",
+            "description": "Display name of the replier."
+          },
+          "created_by_id": {
+            "type": "string",
+            "description": "Local user id of the replier."
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rfi_id",
+          "body",
+          "created_by",
+          "created_by_id",
+          "created_at"
+        ]
+      },
+      "RFIResponse": {
+        "type": "object",
+        "description": "A request for information one unit raises to the others on an operation.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "participant_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The unit the RFI was raised as; null once that unit is removed from the operation."
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "resolved"
+            ]
+          },
+          "created_by": {
+            "type": "string",
+            "description": "Display name of the poster."
+          },
+          "created_by_id": {
+            "type": "string",
+            "description": "Local user id of the poster; the only user who can resolve the RFI."
+          },
+          "resolved_by": {
+            "type": "string",
+            "description": "Display name of who resolved it; empty while open."
+          },
+          "resolved_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "RFC 3339, or null while open."
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "comments": {
+            "type": "array",
+            "description": "Replies, oldest first. Never null.",
+            "items": {
+              "$ref": "#/components/schemas/RFICommentResponse"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "operation_id",
+          "participant_id",
+          "question",
+          "status",
+          "created_by",
+          "created_by_id",
+          "resolved_by",
+          "resolved_at",
+          "created_at",
+          "updated_at",
+          "comments"
+        ]
+      },
+      "ListRFIsResponse": {
+        "type": "object",
+        "properties": {
+          "rfis": {
+            "type": "array",
+            "description": "Open RFIs newest first, then resolved ones. Never null.",
+            "items": {
+              "$ref": "#/components/schemas/RFIResponse"
+            }
+          }
+        },
+        "required": [
+          "rfis"
+        ]
+      },
+      "CreateRFIRequest": {
+        "type": "object",
+        "properties": {
+          "participant_id": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "The unit the RFI is raised as; must be checked in to this operation."
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Trimmed."
+          }
+        },
+        "required": [
+          "participant_id",
+          "question"
+        ]
+      },
+      "AddRFICommentRequest": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Trimmed."
+          }
+        },
+        "required": [
+          "body"
+        ]
+      },
+      "SiteResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "description": "Index in the operation's order, from 0."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "id",
+          "operation_id",
+          "position",
+          "name"
+        ]
+      },
+      "SaveSitesRequest": {
+        "type": "object",
+        "description": "The operation's whole ordered site list; positions are the array index.",
+        "properties": {
+          "sites": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "description": "A site of this operation to keep, renamed or repositioned. Omit for a new site."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60,
+                  "description": "Trimmed; unique within the request, case-insensitively."
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "sites"
+        ]
+      },
+      "SaveSitesResponse": {
+        "type": "object",
+        "properties": {
+          "sites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteResponse"
+            }
+          }
+        },
+        "required": [
+          "sites"
+        ]
+      },
+      "SavePhasePlanRequest": {
+        "type": "object",
+        "description": "One phase's whole plan.",
+        "properties": {
+          "supported_participant_id": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64,
+            "description": "A participant of this operation, or null (or blank) for none (PARTICIPANT_NOT_FOUND otherwise)."
+          },
+          "placements": {
+            "type": "object",
+            "maxProperties": 256,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Participant id to site id. Each participant must be checked in to this operation (PARTICIPANT_NOT_FOUND) and each site one of its sites (OPERATION_UNKNOWN_SITE)."
+          },
+          "requirements": {
+            "type": "array",
+            "maxItems": 2048,
+            "items": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "b": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ]
+            },
+            "description": "Pairs that must talk, in either order. A pair of one participant is refused (OPERATION_REQUIREMENT_SELF)."
+          }
+        },
+        "required": [
+          "placements",
+          "requirements"
         ]
       }
     }
@@ -9347,15 +12720,23 @@
     },
     {
       "name": "Transports",
-      "description": "Transport Library - fibre, cellular, MANET and HF transport reference data"
+      "description": "Transport Library - fiber, cellular, MANET and any other non-SATCOM path a PACE tier can name. The kind vocabulary is open."
     },
     {
       "name": "Platforms",
-      "description": "External comms platforms - airframes, ships, coalition vehicles - that are not equipment we own, each carrying the waveforms and catalog radios it has. The input to the joint compatibility matrix."
+      "description": "External comms platforms - airframes, ships, ground vehicles - operated by a US military branch or another government agency, that are not equipment we own, each carrying the waveforms and catalog radios it has. The input to the joint compatibility matrix."
     },
     {
       "name": "CSV",
       "description": "Multi-dataset CSV bundles - one request, one zip, several domains"
+    },
+    {
+      "name": "Organizations",
+      "description": "Organizations library - the participants an operation checks in: service components, squadrons and partners. Global reference data."
+    },
+    {
+      "name": "Operations",
+      "description": "Operations - named efforts the enterprise plans together, and each organization's check-in (participant) to them: equipment, waveforms, services, transports and a point of contact."
     }
   ]
 }

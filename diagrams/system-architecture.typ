@@ -1,6 +1,10 @@
 #import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge
-#import "design/tokens.typ": tokens
 #import "design/theme.typ": palette, divider
+#import "design/parts.typ": scaled, edge-label, group-tab, legend-under, legend-edge
+
+// Text a step above the shared tokens: tight gaps leave the width to the
+// text rather than to whitespace. See design/parts.typ.
+#let tokens = scaled(1.15)
 
 // The running system, not a target state. Sources:
 //   compose.selfhost.yaml        the containers and their env wiring
@@ -19,7 +23,7 @@
   // auto, so the page can never be narrower than the diagram it holds.
   width: auto,
   height: auto,
-  margin: (top: 24pt, bottom: 32pt, left: 24pt, right: 24pt),
+  margin: (top: 6pt, bottom: 10pt, left: 6pt, right: 6pt),
   fill: palette.surface,
 )
 
@@ -29,8 +33,18 @@
   fill: palette.ink,
 )
 
+// Typst draws inline code at 0.8em, which would put it under the size floor
+// in design/tokens.typ. Hold it to the label size like every other line.
+#show raw: set text(size: tokens.size-label)
+
+// Every card is the same width and its lines wrap inside it, so no single
+// long line can widen a column. Narrow on purpose: the README draws this at
+// 838px, and the version it replaced came out at 6.3px text there. See
+// design/tokens.typ for the rule.
+#let card-width = 224pt
+
 // -- Node body: title + (kind) + divider + detail lines --
-#let svc(title, kind, details, hue: palette.blue) = stack(
+#let svc(title, kind, details, hue: palette.blue) = block(width: card-width, stack(
   dir: ttb,
   spacing: tokens.gap-structured-text,
   block(width: 100%, align(center,
@@ -40,17 +54,17 @@
     text(style: "italic", size: tokens.size-caption, fill: hue.ink, "(" + kind + ")")
   )),
   divider(hue: hue),
-  stack(dir: ttb, spacing: 3pt,
+  stack(dir: ttb, spacing: 4pt,
     ..details.map(d => align(left, text(size: tokens.size-label, fill: hue.ink, d)))
   ),
-)
+))
 
 #let owned(pos, title, kind, details, hue, nm) = node(pos,
   svc(title, kind, details, hue: hue),
   shape: fletcher.shapes.rect,
   fill: hue.fill,
   stroke: (paint: hue.stroke, thickness: tokens.stroke-emphasis),
-  inset: tokens.pad-inside-shape,
+  inset: 7pt,
   corner-radius: tokens.radius-shape,
   name: nm,
 )
@@ -60,54 +74,54 @@
   shape: fletcher.shapes.rect,
   fill: palette.surface-muted,
   stroke: (paint: palette.border, dash: "dashed", thickness: tokens.stroke-default),
-  inset: tokens.pad-inside-shape,
+  inset: 7pt,
   corner-radius: tokens.radius-shape,
   name: nm,
 )
 
-// -- Three edge kinds --
-#let flow-edge(from, to, lbl) = edge(from, to, "->",
-  text(size: tokens.size-label, fill: palette.green.stroke, lbl),
-  label-fill: palette.surface, label-sep: tokens.label-sep,
-  stroke: (paint: palette.green.stroke, thickness: tokens.stroke-default))
+// -- Three edge kinds. Every label sits on its own line; see edge-label in
+// design/parts.typ. --
+#let flow-edge(from, to, lbl: none, ..args) = edge(from, to, "->",
+  ..edge-label(lbl, palette.green.stroke, t: tokens),
+  label-fill: palette.surface, label-side: center,
+  stroke: (paint: palette.green.stroke, thickness: tokens.stroke-default), ..args)
 
-#let auth-edge(from, to, lbl) = edge(from, to, "->",
-  text(size: tokens.size-label, fill: palette.orange.stroke, lbl),
-  label-fill: palette.surface, label-sep: tokens.label-sep,
-  stroke: (paint: palette.orange.stroke, thickness: tokens.stroke-default, dash: "dashed"))
+#let auth-edge(from, to, lbl: none, ..args) = edge(from, to, "->",
+  ..edge-label(lbl, palette.orange.stroke, t: tokens),
+  label-fill: palette.surface, label-side: center,
+  stroke: (paint: palette.orange.stroke, thickness: tokens.stroke-default, dash: "dashed"), ..args)
 
-
-#diagram(
-  spacing: (168pt, 118pt),
+#let system = diagram(
+  spacing: (30pt, 64pt),
 
   // -- Browser, top left --
   owned((0, 0), "Browser", "SPA . MSAL.js",
     ([React 19 . Vite 8 . MUI v9],
-     [reads window.\_\_SHF\_AUTH\_\_ from index.html],
-     [tokens cached in localStorage],
+     [reads window.\_\_SHF\_AUTH\_\_],
+     [tokens in localStorage],
      [sends Authorization: Bearer]),
     palette.blue, <browser>),
 
   // -- Entra, top right --
   external((2, 0), "Microsoft Entra ID", "optional identity provider",
     ([present only when AUTH\_ENABLED=true],
-     [ONE combined app registration],
-     [audience: the bare client ID (v2 tokens)],
+     [ONE app registration],
+     [audience: the bare client ID],
      [AUTH\_AUTHORITY\_HOST picks the login host],
      [publishes JWKS]),
     palette.orange, <entra>),
 
   // -- The app, centre --
   owned((1, 1), "Asset Tracker", "Go 1.26 . Fiber v3 . one container",
-    ([validates the JWT in-process - coreos/go-oidc],
-     [issuer checked, signing alg pinned to RS256],
-     [RBAC resolved from the local users table],
-     [serves `/api/v1/*` AND the built SPA from `./static`],
-     [`/health` and `/ready` skip auth; every other route does not],
-     [HSTS . CSP . per-client-IP rate limit],
+    ([verifies the JWT in-process],
+     [signature . issuer . audience],
+     [expiry . RS256 only (go-oidc)],
+     [roles from the users table],
+     [serves `/api/v1/*` and the SPA],
+     [`/health`, `/ready` skip auth],
+     [HSTS . CSP . rate limit],
      [AUTH\_ENABLED=false: no sign-in, every visitor is admin]),
     palette.green, <backend>),
-
 
   // -- Data stores, bottom --
 
@@ -121,51 +135,34 @@
   external((0, 2), "Azure Blob Storage", "optional",
     ([present only when AZURE\_STORAGE\_URL is set],
      [otherwise photo upload answers 501],
-     [equipment photos . squadron emblems],
-     [stored URL is not browser-fetchable, so],
-     [the API proxies the bytes]),
+     [photos . squadron emblems],
+     [the API proxies the bytes],
+     [stored URLs are not public]),
     palette.yellow, <blob>),
 
   // -- Edges --
-  auth-edge(<browser>, <entra>, [1. MSAL sign-in]),
-  flow-edge(<browser>, <backend>, [2. HTTPS + Bearer JWT]),
-  auth-edge(<entra>, <backend>, [3. JWKS . verify signature, issuer, audience, expiry . RS256 only]),
+  auth-edge(<browser>, <entra>, lbl: [1. MSAL sign-in]),
+  flow-edge(<browser>, <backend>, lbl: [2. HTTPS + Bearer JWT]),
+  auth-edge(<entra>, <backend>, lbl: [3. JWKS keys], label-pos: 0.35),
 
-  flow-edge(<backend>, <db>, [SQL . pgx/v5]),
-  flow-edge(<backend>, <blob>, [photo read / write]),
+  flow-edge(<backend>, <db>, lbl: [SQL . pgx/v5], label-pos: 0.3),
+  flow-edge(<backend>, <blob>, lbl: [photo read / write]),
 )
 
-// -- Legend, outside the diagram so it cannot widen a column --
-#v(tokens.gap-cell * 2)
-#line(length: 100%, stroke: tokens.stroke-thin + palette.border-muted)
-#v(tokens.gap-cell)
-#text(size: tokens.size-label, weight: tokens.weight-bold,
-  fill: palette.ink-muted, upper([Legend]))
-#v(tokens.gap-cell)
-
-#let leg(marker, desc) = grid(
-  columns: (100pt, auto),
-  column-gutter: tokens.gap-cell,
-  align: horizon,
-  marker,
-  text(size: tokens.size-label, fill: palette.ink-muted, desc),
+#legend-under(system, t: tokens, marker-width: 92pt, (
+  (legend-edge((paint: palette.green.stroke, thickness: tokens.stroke-default)),
+    [request and data flow]),
+  (legend-edge((paint: palette.orange.stroke, thickness: tokens.stroke-default, dash: "dashed")),
+    [identity. Entra proves who you are; the role that decides what you may do is app-local]),
+  (box(width: 14pt, height: 10pt, rect(width: 100%, height: 100%,
+      fill: palette.green.fill,
+      stroke: (paint: palette.green.stroke, thickness: tokens.stroke-emphasis),
+      radius: 3pt)),
+    [built here]),
+  (box(width: 14pt, height: 10pt, rect(width: 100%, height: 100%,
+      fill: palette.surface-muted,
+      stroke: (paint: palette.border, dash: "dashed", thickness: tokens.stroke-default),
+      radius: 3pt)),
+    [something the container talks to. Dashed titles marked optional can be left out entirely]),
 )
-
-#stack(dir: ttb, spacing: 8pt,
-  leg(text(fill: palette.green.stroke, [--------->]),
-      [request and data flow]),
-  leg(text(fill: palette.orange.stroke, [- - - - - >]),
-      [identity. Entra proves who you are; the role that decides what you may do is app-local]),
-  leg(stack(dir: ltr, spacing: 4pt,
-      box(width: 14pt, height: 9pt, rect(width: 100%, height: 100%,
-        fill: palette.green.fill,
-        stroke: (paint: palette.green.stroke, thickness: tokens.stroke-emphasis),
-        radius: 3pt))),
-      [built here]),
-  leg(box(width: 14pt, height: 9pt, rect(width: 100%, height: 100%,
-        fill: palette.surface-muted,
-        stroke: (paint: palette.border, dash: "dashed", thickness: tokens.stroke-default),
-        radius: 3pt)),
-      [something the container talks to. Dashed titles marked optional can be left out entirely]),
 )
-

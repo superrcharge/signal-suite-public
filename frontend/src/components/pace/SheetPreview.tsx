@@ -5,13 +5,23 @@ import { ChannelWheel } from '@/components/pace/ChannelWheel';
 import { EquipmentPhoto } from '@/components/catalog/EquipmentPhoto';
 import {
   PACE_RADIO_LABELS,
+  PACE_THEATER_LABELS,
   type PaceCard,
   type PaceFreqRow,
   type PaceTmnRow,
   type PaceTier,
   type PaceRadio,
 } from '@/types';
-import { PACE_TIERS, SHEET_CHANGED, isMarked } from '@/components/pace/pace-constants';
+import {
+  PACE_TIERS,
+  SHEET_CHANGED,
+  SHEET_CONDENSED_FONT as CONDENSED_FONT,
+  SHEET_DISPLAY_FONT as DISPLAY_FONT,
+  changedProps,
+  changedSty,
+  isMarked,
+} from '@/components/pace/pace-constants';
+import { SheetHeader } from '@/components/pace/SheetHeader';
 import { usePaceEmblem } from '@/components/pace/use-pace-emblem';
 import { sheetRootProps } from '@/components/common/sheet-export';
 import '@/styles/catalog-tokens.css';
@@ -40,11 +50,6 @@ export const PAGE_H = 816;
 // too.
 const WHEEL_SPREAD = 20;
 
-// Catalog tokens, matching DataSheet.tsx: Oswald for display type, Barlow
-// Condensed for dense labels.
-const DISPLAY_FONT = 'var(--font-display)';
-const CONDENSED_FONT = 'var(--font-condensed)';
-
 /** Maps a saved plan onto the wheel's props. */
 function wheelPropsFor(card: PaceCard | undefined, radio: PaceRadio) {
   const plan = card?.plans.find((p) => p.radio_type === radio);
@@ -70,44 +75,6 @@ function wheelPropsFor(card: PaceCard | undefined, radio: PaceRadio) {
     captionMarked: isMarked(plan?.highlights, 'label'),
   };
 }
-
-/**
- * The style a value marked as changed takes: red, and nothing else. Colour
- * only, so a marked value keeps its exact size and weight and the sheet's
- * fixed geometry cannot move.
- *
- * Every marked element also carries `data-changed`, which is what a test or a
- * later "changes only" view can select on without re-reading the payload.
- */
-const changedSty = { color: SHEET_CHANGED } as const;
-
-/** Props for any element that may print as changed. */
-function changedProps(marked: boolean) {
-  return marked ? { 'data-changed': 'true' } : {};
-}
-
-/**
- * `2026-08-20` -> `20 AUG 2026`. Deliberately not `08/09/26`, which reads as
- * two different dates depending on who is holding the card.
- */
-function formatCardDate(iso: string): string {
-  const [y, m, d] = iso.split('-');
-  if (!y || !m || !d) return iso;
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const name = months[Number(m) - 1];
-  return name ? `${d} ${name} ${y}` : iso;
-}
-
-/** The subtext under the title: the date and the version label. */
-const dateLineSty = {
-  fontFamily: CONDENSED_FONT,
-  textAlign: 'center',
-  fontSize: 13,
-  fontWeight: 700,
-  letterSpacing: '0.18em',
-  textTransform: 'uppercase',
-  color: 'var(--fg-3)',
-} as const;
 
 // The middle band's geometry. Every row is a fixed height so the LTAC and
 // TACSAT tables stay aligned with each other line for line, whatever either
@@ -459,7 +426,7 @@ export function PaceTile({ letter, label, tier }: { letter: string; label: strin
                   equipment.photo_url holds a raw Azure blob URL and the container is
                   created with allowBlobPublicAccess false, so a browser fetching it
                   directly is refused and draws its broken-image glyph. That is the
-                  bug the squadron emblem had in an earlier release, and this tile was the last
+                  bug the squadron emblem had in v1.4.4, and this tile was the last
                   place in the frontend still doing it. EquipmentPhoto takes the id
                   and uses photoUrl only to invalidate its cache.
 
@@ -506,11 +473,6 @@ export function SheetPreview({ card, sectionLabel }: { card?: PaceCard; sectionL
   // browser is not allowed to fetch. Falls back to the generated placeholder,
   // so a hub is never left empty and never shows a broken image.
   const { emblemHref: emblemUrl } = usePaceEmblem(card?.section, card?.emblem_url, sectionLabel);
-  const titleMarked = isMarked(card?.highlights, 'title');
-  const dateMarked = isMarked(card?.highlights, 'date');
-  const versionMarked = isMarked(card?.highlights, 'version');
-  const date = card?.effective_date ? formatCardDate(card.effective_date) : '';
-  const version = card?.version ?? '';
   return (
     // Centred in whatever space the pane has, rather than pinned to the
     // sidebar. The sheet is a fixed 1056px, so when the pane is narrower the
@@ -544,53 +506,43 @@ export function SheetPreview({ card, sectionLabel }: { card?: PaceCard; sectionL
             px: 0.25,
             py: 0.5,
             overflow: 'hidden',
+            // For the theater watermark below.
+            position: 'relative',
           }}
         >
-          {/* Centred card title -- names the exercise/operation this card covers.
-              Becomes an editable field on the plan; sample text here. */}
-          <Typography
-            {...changedProps(titleMarked)}
-            sx={{
-              fontFamily: DISPLAY_FONT,
-              textAlign: 'center',
-              fontWeight: 600,
-              fontSize: 30,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              lineHeight: 1.1,
-              ...(titleMarked ? changedSty : null),
-            }}
-          >
-            {card?.title || 'Untitled card'}
-          </Typography>
-          {/* The date and the version are siblings in a flex row, never spans
-              in one line of text. The slide export emits each laid-out element
-              as one text box in that element's colour, so a red version inside
-              a grey date line would have exported grey. As flex items each is
-              its own run, in its own colour. */}
-          {date || version ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.75, mt: 0.25 }}>
-              {date && (
-                <Typography
-                  {...changedProps(dateMarked)}
-                  sx={{ ...dateLineSty, ...(dateMarked ? changedSty : null) }}
-                >
-                  {date}
-                </Typography>
-              )}
-              {date && version && <Typography sx={dateLineSty}>·</Typography>}
-              {version && (
-                <Typography
-                  {...changedProps(versionMarked)}
-                  // Printed as typed: "v2" is not "V2" to the people who
-                  // number their revisions that way.
-                  sx={{ ...dateLineSty, textTransform: 'none', ...(versionMarked ? changedSty : null) }}
-                >
-                  {version}
-                </Typography>
-              )}
-            </Box>
-          ) : null}
+          {/* Which of the squadron's two cards this is, as a quiet mark in
+              the top-left corner. Inside the sheet root so a print and both
+              exports carry it: two cards that read identically apart from
+              their wheels must say which is which on paper. Its own laid-out
+              element, so the slide export emits it as one text box. Guarded,
+              because a card cached from before theaters carries none. */}
+          {card?.theater && (
+            <Typography
+              sx={{
+                position: 'absolute',
+                top: 6,
+                left: 10,
+                fontFamily: CONDENSED_FONT,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: '0.22em',
+                textTransform: 'uppercase',
+                color: 'var(--fg-3)',
+                opacity: 0.6,
+                lineHeight: 1,
+              }}
+            >
+              {PACE_THEATER_LABELS[card.theater]}
+            </Typography>
+          )}
+          {/* Centred card title, date and version. Shared with the editor's
+              live preview, which is why it is a component. */}
+          <SheetHeader
+            title={card?.title ?? ''}
+            effectiveDate={card?.effective_date ?? ''}
+            version={card?.version ?? ''}
+            highlights={card?.highlights}
+          />
 
           {/* Width is the contested axis: two wheels side by side get about
               512px each and the labels want all of it. Height is not, so the

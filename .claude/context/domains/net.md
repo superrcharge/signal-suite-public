@@ -41,6 +41,7 @@ CREATE INDEX idx_nets_radio_type ON nets (radio_type);
 ### Uniqueness is per squadron, and that is the headline
 
 `nets_section_name_unique` is on `(section, LOWER(name))`, **not** on `LOWER(name)` alone.
+(That is 028's index; 042 replaced it with `nets_section_theater_name_unique`, described under theater below, which keeps the per-squadron rule and adds the theater.)
 Two squadrons may each have a FIRES; neither may have two. Migration 028 exists for
 exactly this: every squadron previously shared one global pool, so A SQD editing FIRES'
 frequency changed it for B SQD too. Net names are commonly shared (FIRES, CMD, ASLT)
@@ -93,6 +94,19 @@ both radios must not have to be entered twice. `CarriedBy(netRadioType, radio)` 
 `model.go` is the single place that rule lives; `both` matches either wheel. This is the
 column the PACE domain reads to refuse an MPU5-only net on a JEM channel.
 
+**`theater` is tri-state, `conus | oconus | both`, the same shape as `radio_type`** (042).
+A net used in both theaters is entered once and appears in either list.
+Empty on create is `conus`, not `both`: a caller that predates theaters is describing the only theater there was.
+Unknown values are `NET_INVALID_THEATER` (400).
+
+The uniqueness rule has two layers, and they are deliberately different:
+
+- **The index is exact.** `nets_section_theater_name_unique` is on `(section, theater, LOWER(name))`, so a CONUS FIRES and an OCONUS FIRES coexist - which is the whole point, since the frequencies behind a name differ by theater.
+- **The service refuses more.** `NameExists` and `NameExistsExcluding` take the theater and match any same-name net whose theater OVERLAPS (`theater = $3 OR theater = 'both' OR $3 = 'both'`), because a `both` FIRES beside a `conus` FIRES would both appear in the CONUS list. The index is the floor a race cannot get under; the service rule is what a reader would call a duplicate. `UpdateNet` applies a theater change before the name check and re-checks when either moved, since moving a net into a theater where its name is taken is the same collision as renaming onto one.
+
+Whether a net may sit on a card is `contracts.TheaterCarries`, applied by the PACE domain; this domain only declares the value.
+`InfoByIDs` selects it so `NetsByIDs` can carry it across.
+
 **`roip` is per net, not per channel** (029). Whether a net is carried over IP rather than
 RF alone is a property of the net itself, so a card can show at a glance which nets are
 ROIP'd without the flag being restated on every position that carries them.
@@ -130,9 +144,9 @@ error" when what actually happened is a duplicate name.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | GET | `/api/v1/nets/:section` | any authenticated | That squadron's nets, `ORDER BY lower(name) COLLATE natural_sort ASC` |
-| POST | `/api/v1/nets/:section` | admin, editor or **rto** | `name` required, unique per squadron (case-insensitive) |
-| PATCH | `/api/v1/nets/id/:id` | admin, editor or **rto** | Partial update - nil fields ignored |
-| DELETE | `/api/v1/nets/id/:id` | admin, editor or **rto** | Refused with 409 when the net is on a wheel |
+| POST | `/api/v1/nets/:section` | admin, editor, **rto** or **planner** | `name` required, unique per squadron and theater (case-insensitive; a `both` net overlaps either theater, by the two-layer rule above) |
+| PATCH | `/api/v1/nets/id/:id` | admin, editor, **rto** or **planner** | Partial update - nil fields ignored |
+| DELETE | `/api/v1/nets/id/:id` | admin, editor, **rto** or **planner** | Refused with 409 when the net is on a wheel |
 
 There is no unscoped `GET /api/v1/nets` and no unscoped `POST` - a per-squadron library has
 no "all nets" to list and nowhere to create a net without naming its owner. Update and
@@ -140,17 +154,23 @@ delete key off the net's own id, which already carries its section.
 
 > **`id` is effectively a reserved section key.** `GET /api/v1/nets/:section` is a
 > wildcard, so the literal `/id/` segment that PATCH and DELETE use is only distinguishable
-> from a section named `id` by which method arrived. Harmless today, because the card-bearing
-> sections are a fixed set (`asqd`, `bsqd`, `csqd`, `dsqd`, `fsqd`), but a trap for
-> whoever adds a section later. A section keyed `id` would make `GET /nets/id` collide.
+> from a section named `id` by which method arrived. Harmless today, because no section is
+> keyed `id`, but a trap for whoever adds one: the card-bearing sections are not a fixed set
+> but every section with `sections.pace_enabled` (migration 036, seeded true for `asqd`,
+> `bsqd`, `csqd`, `dsqd` and `fsqd`), so a section keyed `id` would make `GET /nets/id` collide.
 
-`rto` is included deliberately: the PACE Planner is the product RTOs maintain. The
+`rto` is included deliberately: the PACE Planner is the product RTOs maintain, and `planner`
+writes nets as one of the four domains that role exists for (`radionet/routes.go`). The
 frontend gate is **`canWritePace`**, not `canWrite` - `canWrite` is admin/editor only
 and would hide every control from exactly the role this is built for.
 
 **Error codes:** `NET_SECTION_NOT_FOUND` (404), `NET_NOT_FOUND` (404), `NET_NAME_EXISTS`
 (409), `NET_IN_USE` (409), `NET_INVALID_FREQ_UNIT` (400), `NET_INVALID_RADIO_TYPE` (400),
-`NET_INTERNAL_ERROR` (500).
+`NET_INVALID_THEATER` (400), `NET_INTERNAL_ERROR` (500).
+
+`theater` rides in the body on create and update, like `radio_type`, and `GET /api/v1/nets/:section`
+keeps returning every net the squadron has: the theater lists are filtered on the client, as the
+radio tabs are.
 
 ### Deletion is guarded in both layers
 
@@ -200,13 +220,23 @@ squadrons (`sections.pace_enabled`, migration 036; see `pace.md`).
 `nets-page.tsx`:
 - **JEM / MPU5 tabs**, held in the URL as `?radio=`. A `both` net appears under each tab
   rather than being duplicated. Tab counts include shared nets.
+- **CONUS / OCONUS**, held in the URL as `?theater=oconus` with the default deleted rather
+  than written (the comms library's `?lib=` convention), read through `parseTheater` in
+  `components/pace/theater.ts`. The control is `components/pace/TheaterSwitch.tsx`, the same
+  component the card page carries in the same place, so it is learned once. The list is
+  `carriedBy(radio) && inTheater(theater)`, the tab counts are within the theater, switching
+  keeps `radio` and drops `drawer`/`id`, and Print and the export label carry both. A new net
+  from the drawer starts in the theater on screen (`NetDrawer`'s optional `theater` prop). The
+  table gains a **Theater** column beside Carried by, for the same reason that column exists:
+  a `Both` net shows under either list.
 - The table carries a centre-aligned **ROIP** column, holding the **ICE mark**
   (`components/common/ice-mark.tsx`) where the flag is set and `EMPTY_VALUE` where it is
   not. The column survived a proposal to move the mark beside the net name: the mark
   carries no words and not every reader knows it on sight, so the column header is what
   teaches it. One fact, one place - not both.
 - Drawer state is URL-driven (`?drawer=add`, `?drawer=edit&id=`), matching terminals and
-  kits - that is what lets the header's **Add Net** button deep-link into the add drawer.
+  kits - that is what lets a `?drawer=add` link open the add drawer. The header's **Add Net**
+  no longer deep-links here: it opens its own drawer in place (see below).
   The edit lookup resolves against *all* nets for the squadron, not the filtered tab, so a
   deep link still opens a net that belongs to the other radio. Terminals and kits go one step
   further and fall back to a by-id fetch, which nets does not need precisely because it loads
@@ -224,43 +254,77 @@ squadrons (`sections.pace_enabled`, migration 036; see `pace.md`).
 ### The header's Add Net button
 
 In `components/layouts/header.tsx`, gated on `canWritePace` alone. It is on **every**
-route, so the three Add buttons read as one cluster instead of one that grows and shrinks
-as you move around the app.
+route, so the Add rows read as one menu instead of one that grows and shrinks as you move
+around the app. It is the third of eight rows, after Add Terminal and Add Kit and before the
+four Comms Library rows and Add Operation, which is the order the app introduces each thing.
 
 ```ts
-const paceSectionMatch = /^\/(?:nets|pace)\/([^/]+)\/?$/.exec(location.pathname);
+const paceSectionMatch = /^\/(?:nets|pace)\/([^/]+)/.exec(location.pathname);
 const matchedSection = paceSectionMatch?.[1];
-const netSection = matchedSection && hasPaceCard(matchedSection) ? matchedSection : null;
-const addNetHref = netSection ? `/nets/${netSection}?drawer=add` : '/nets';
+const { sections: squadrons, hasCard } = usePaceSections();
+const netSection = matchedSection && hasCard(matchedSection) ? matchedSection : '';
+const [addNetOpen, setAddNetOpen] = useState(false);
+// the Add Net row: onSelect: () => setAddNetOpen(true)
+{addNetOpen && <NetDrawer open section={netSection} squadrons={squadrons} theater={theater} net={null} ... />}
 ```
 
-**The match now decides the destination, not whether the button exists.** That is the whole
-change: the squadron question it used to hide from is still real, so it is answered by where
-the click lands rather than by withholding the control.
+**The click is the add.** Add Net opens the drawer in place, over whatever page is on
+screen, the way Add Terminal and Add Kit open theirs. It used to navigate first: to
+`/nets/:section?drawer=add` from a squadron's own routes, and to the `/nets` picker from
+everywhere else, which read as being sent somewhere you were not supposed to be before
+being allowed to add. The `AddItem` row type has `onSelect` beside `href` for exactly this
+row; every other row still navigates.
+
+**The URL is a seed, not the answer.** The route used to be the only thing that decided the
+squadron: the drawer took it as a prop, never showed it, and posted to it. Nothing on screen
+said where the net would land, and a net never moves between squadrons once created, so one
+filed from the wrong library could only be deleted and typed in again. The drawer opens
+with a **Squadron** select as its first field, listing exactly the card-bearing squadrons
+(`usePaceSections().sections`, passed down as `squadrons` so the drawer's closed test mock
+stays closed). The match is a **prefix**, so `/nets/:section`, `/pace/:section`,
+`/pace/:section/edit` and `/pace/:section/print` all pre-select their squadron; any other
+route starts it empty and the drawer refuses to create until one is chosen ("Squadron is
+required."). Hidden in edit mode, because the API does not take it.
+
+**After Create, the app lands where the net is.** The drawer shows the toast, "Net created
+in <squadron>", then calls `onCreated` with the squadron, radio type and theater it sent,
+and the host navigates to `netsLibraryPath(created, params)` from
+`components/pace/net-landing.ts`: `/nets/<squadron>?radio=<tab>&theater=<theater>`. The
+radio tab and theater move to the new net's values, because an MPU5-only net created from
+the JEM tab, or an OCONUS-only net from CONUS, was created correctly and filtered straight
+out of the list, which read as the net being lost. A `both` value keeps the current tab or
+theater, since the net is visible under either. A push, not a replace, so Back returns to
+where the user was. The helper is pure and shared by the header's drawer and the nets page's
+own (`?drawer=add` deep link, still supported), so the two cannot land differently.
 
 Three things are load-bearing:
 
-- **Both `/nets/:section` and `/pace/:section` match**, and those are the only routes that
-  deep-link into the add drawer. Nets are per-squadron, so everywhere else the button lands
-  on the picker rather than guessing one - a net filed under the wrong squadron is worse
-  than one extra click, and squadrons are not interchangeable.
-- **The regex is still anchored to the end of the path**, so `/pace/:section/edit` does
-  **not** deep-link; it falls back to the picker like any other non-section route. The
-  editor holds one draft for the whole card and an SPA navigation away discards every
-  unsaved change with no `beforeunload` to catch it. That hazard belongs to **every** link
-  on that page, though, which is why the button is no longer singled out for removal - it
-  was the only control being withheld for a risk the sidebar and the page picker carry too.
-  A route guard on the editor would close it properly, and remains unbuilt.
-- **The card flag is checked too**, since a section without a card has no nets page to land
-  on either. The header reads it through `usePaceSections()`, which is the one `@/services`
-  hook the header is allowed to pull - see the note in `header.test.tsx`.
+- **The PACE editor is the one host that does not navigate after Create.** It holds one
+  unsaved draft for the whole card and an SPA navigation away discards it with no
+  `beforeunload` to catch it, so the header checks `/pace/:section/edit` and leaves the
+  editor on screen; the toast still names the squadron. Opening the drawer over the editor
+  loses nothing, which is why the route is no longer excluded from the seed.
+- **The drawer is mounted on the click and unmounted on close**, never held open with a
+  prop. It calls the two net mutation hooks, and mounting it on every route would put them
+  in every closed `vi.mock('@/services')` that renders `MainLayout` - the same rule the CSV
+  dialogs follow. `checkServiceMocks` reads header.tsx's own `@/services` import line,
+  which stays `useLogout`; `header-add-net.test.tsx` is where the drawer is exercised, with
+  its own mock, so `header.test.tsx`'s deliberately short mock stays short.
+- **The card flag is checked**, since only a section with a card holds nets. The header
+  reads it through `usePaceSections()`, which is the one `@/services` hook the header is
+  allowed to pull - see the note in `header.test.tsx`.
 
-The button is deliberately leftmost: the cluster is right-anchored, so a button added on the
-left leaves Add Kit and Add Terminal where the eye expects them.
+The picker at `/nets` is navigation only: a squadron tile opens that squadron's library,
+never the add drawer.
 
-**Drawer:** `frontend/src/pages/net-drawer.tsx` - name, channel # (`net_id`), radio type and freq unit
-(each a `ToggleButtonGroup`, since both are closed sets), TX/RX, a **ROIP** checkbox, and
-notes. No waveform field, and no `description` field: the column exists and the API accepts
+The row sits third rather than first: the menu reads in the order the sidebar does, Terminals,
+Kits, then the Nets Library under PACE Planning, so Add Kit and Add Terminal stay where the eye
+expects them. It used to be the leftmost of three header buttons for the same reason.
+
+**Drawer:** `frontend/src/pages/net-drawer.tsx` - squadron (a `Select` over the card-bearing
+squadrons, add mode only, pre-selected to the library on screen - see above), name, channel #
+(`net_id`), radio type and freq unit (each a `ToggleButtonGroup`, since both are closed sets),
+TX/RX, a **ROIP** checkbox, and notes. No waveform field, and no `description` field: the column exists and the API accepts
 it, but the drawer does not surface it. Text inputs carry client-side `maxLength` matching
 the DTO's `max=` caps, so the field stops accepting characters rather than the server
 rejecting the save. Values arriving from the API that are not in `NET_RADIO_TYPES` /
@@ -301,19 +365,20 @@ authorization boundary would need a `users.section` column plus service-layer ch
 
 `GET /api/v1/export/nets/:section` exports one squadron's nets.
 `GET /api/v1/nets/import/template` is shared across squadrons.
-`POST /api/v1/nets/:section/import` imports into the squadron in the path (admin/editor/rto).
+`POST /api/v1/nets/:section/import` imports into the squadron in the path (admin, editor, rto or planner).
 
 Everything here follows from nets being per-squadron:
 
 - **Export is section-scoped, with no squadron facet.** There is no "all nets" query and never has been. Adding a cross-section read purely to populate a filter chip would invent a view the domain does not have.
 - **`section` is exported but has no parser, so it can never be imported.** The squadron is the write target, taken from the URL and stamped after parsing, which means a file naming another squadron still lands where the URL says. There is a test for this specifically.
-- **Uniqueness is checked within the target squadron only**, matching create: two squadrons commonly run a net of the same name on different frequencies.
+- **Uniqueness is checked within the target squadron only**, by the same theater overlap rule as create (`NameExists`), matching it: two squadrons commonly run a net of the same name on different frequencies.
 
 Two enums that deliberately disagree, both tested so the inconsistency does not read as a bug:
 
 | Column | Folded? | Why |
 |---|---|---|
 | `radio_type` | yes | `JEM` and `jem` both import; it is never printed raw |
+| `theater` | yes | same reason; blank, or a file with no theater column at all, imports as `conus` through the column's `Default` |
 | `freq_unit` | **no** | `mhz` is rejected - it prints on a wheel exactly as stored |
 
 `tx_freq` and `rx_freq` stay freeform strings. A net is recorded as a range or a placeholder word at least as often as a single figure, so a numeric column would reject most real entries.
@@ -331,5 +396,5 @@ a file anyone already has, and an import written against the old export still pa
 `pages/nets-print-page.tsx`: the radio tab that was open, drawn by the same `NetsTable`
 (`components/pace/NetsTable.tsx`) the live page uses, read only - no Actions column, no pencils - in
 the app's dark palette with `print-color-adjust: exact`, portrait Letter through a `<style>` in
-`document.head` - all of it the shared `PrintPageShell`, which the library and compatibility print routes use too. Share exports the table container, which is the sheet root, via `netsExportSpec`.
+`document.head` - all of it the shared `PrintPageShell`, which the library print route uses too. Share exports the table container, which is the sheet root, via `netsExportSpec`.
 The route is excepted from help coverage in `help-content.test.ts` and covered by the `print-nets` topic.

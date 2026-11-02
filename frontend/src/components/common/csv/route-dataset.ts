@@ -15,6 +15,13 @@ export function datasetForPath(pathname: string, search = ''): CsvResource | und
   if (pathname.startsWith('/nets')) return 'nets';
   if (pathname.startsWith('/pace')) return 'pace-channels';
 
+  // The organizations library has no page of its own: its management screen is
+  // a tab of Settings, so the tab is the one route that is about the dataset.
+  // Every other Settings tab is about something with no CSV and answers nothing.
+  if (pathname.startsWith('/settings') && new URLSearchParams(search).get('tab') === 'organizations') {
+    return 'organizations';
+  }
+
   // The Comms Library is keyed off ?lib=, not ?type=, and has to be read before
   // the /catalog branch below or it falls through to "equipment" - which is the
   // wrong dataset on every one of its three tabs. It is also the only route

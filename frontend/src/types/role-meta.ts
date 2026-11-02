@@ -10,9 +10,9 @@ import type { Role } from './roles';
 export const ROLE_OPTIONS: { value: Role; label: string; description: string }[] = [
   { value: 'admin',  label: 'Admin',  description: 'Every domain, plus user roles and the audit log' },
   { value: 'editor', label: 'Editor', description: 'Writes every domain; no user management' },
-  { value: 'rto',    label: 'RTO',    description: 'Writes radio + waveforms; reads the rest' },
-  { value: 'planner', label: 'Planner', description: 'Writes nets + PACE; reads the catalog' },
-  { value: 'viewer', label: 'Viewer', description: 'Reads everything; no writes' },
+  { value: 'rto',    label: 'RTO',    description: 'Writes radios, waveforms, nets, PACE, transports, platforms, operations, organizations' },
+  { value: 'planner', label: 'Planner', description: 'Writes nets, PACE, transports, platforms, operations, organizations; reads the rest' },
+  { value: 'viewer', label: 'Viewer', description: 'Reads everything; no writes (default view)' },
 ];
 
 /**

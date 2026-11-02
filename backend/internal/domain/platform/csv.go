@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -33,9 +34,9 @@ var csvTable = csvtable.Table[Platform]{
 
 	Preamble: []string{
 		"REQUIRED: designation (case-insensitive unique).",
-		"Category and kind are open: the values below are suggestions, not a closed list.",
+		"Category is the branch or branches operating the platform, ; separated. Type is one value from its list below.",
 		"Waveform abbrevs and equipment ids are separated by ; within one cell.",
-		"Delete every # line and the EXAMPLE rows. Keep the header row below.",
+		"Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.",
 	},
 
 	Columns: []csvtable.Column[Platform]{
@@ -56,26 +57,37 @@ var csvTable = csvtable.Table[Platform]{
 			Example: []string{"Lightning II", "Arleigh Burke"},
 		},
 		{
-			// Normalised rather than validated against a closed set, matching
-			// what the drawer does.
+			// Closed, and rejected per row rather than per file: a value that is
+			// not a branch names itself in the row error, so the file can be
+			// fixed and re-run with the good rows already landed. Branch names
+			// ("Navy", "Air Force") are accepted and stored as abbreviations.
 			Key: "category", Label: "Category",
-			Note:    "Category (open list, suggestions): organic | joint | coalition",
-			Get:     csvtable.Str(func(p *Platform) string { return p.Category }),
-			Set:     csvtable.SetStr(func(p *Platform, v string) { p.Category = NormaliseCategory(v) }),
-			Example: []string{"joint", "coalition"},
+			Note: "Category (closed list, ; separated): USA | USMC | USN | USAF | USSF | USCG | OGA. OGA = other government agency, inside the government but outside the military.",
+			Get:  csvtable.List(listSep, func(p *Platform) []string { return p.Category }),
+			Set: func(p *Platform, v string) error {
+				branches, unknown := NormaliseCategory(splitList(v))
+				if len(unknown) > 0 {
+					return fmt.Errorf("category %q is not a branch; use USA, USMC, USN, USAF, USSF, USCG or OGA", strings.Join(unknown, ", "))
+				}
+				p.Category = branches
+				return nil
+			},
+			Example: []string{"USAF;USN;USMC", "USN"},
 		},
 		{
-			Key: "kind", Label: "Kind",
-			Note:    "Kind (open list, suggestions): aircraft | ship | ground vehicle | ground station",
-			Get:     csvtable.Str(func(p *Platform) string { return p.Kind }),
-			Set:     csvtable.SetStr(func(p *Platform, v string) { p.Kind = NormaliseKind(v) }),
+			// Closed, and rejected per row naming the value, as category is.
+			Key: "type", Label: "Type",
+			Note: "Type (closed list): aircraft | uav | ship | ground vehicle | ground station",
+			Get:  csvtable.Str(func(p *Platform) string { return p.Type }),
+			Set: func(p *Platform, v string) error {
+				t, ok := NormaliseType(v)
+				if !ok {
+					return fmt.Errorf("type %q is not one of aircraft, uav, ship, ground vehicle, ground station", strings.TrimSpace(v))
+				}
+				p.Type = t
+				return nil
+			},
 			Example: []string{"aircraft", "ship"},
-		},
-		{
-			Key: "operator", Label: "Operator",
-			Get:     csvtable.Str(func(p *Platform) string { return p.Operator }),
-			Set:     csvtable.SetStr(func(p *Platform, v string) { p.Operator = strings.TrimSpace(v) }),
-			Example: []string{"USAF", "USN"},
 		},
 		{
 			Key: "waveform_abbrevs", Label: "Waveforms",
@@ -183,27 +195,19 @@ func (s *Service) ImportPlatforms(ctx context.Context, csvBody, actor string) (i
 	}
 
 	now := time.Now().UTC()
-	created := make([]*Platform, 0, len(parsed.Rows))
 	for i, item := range parsed.Rows {
-		// A column absent from the file never ran its Set, so the defaults the
-		// drawer would apply are applied here too.
-		if item.Category == "" {
-			item.Category = NormaliseCategory("")
-		}
-		if item.Kind == "" {
-			item.Kind = NormaliseKind("")
+		// A column absent from the file never ran its Set, so the default the
+		// drawer would apply is applied here too. A missing category stays
+		// empty: there is no branch it could honestly default to.
+		if item.Type == "" {
+			item.Type, _ = NormaliseType("")
 		}
 		var rowErrs []string
-		if !IsValidVocab(item.Category) {
-			rowErrs = append(rowErrs, ErrPlatformInvalidCategory.Message)
-		}
-		if !IsValidVocab(item.Kind) {
-			rowErrs = append(rowErrs, ErrPlatformInvalidKind.Message)
-		}
 		// Per row, not per file, and deliberately: a restore that loads
 		// platforms before waveforms would otherwise fail wholesale, where a row
 		// error lets the operator fix those rows and re-run with the rest
-		// already landed. Category and kind above are rejected the same way.
+		// already landed. Category and type are rejected the same way, in
+		// their Set.
 		if known != nil {
 			var unknown []string
 			for _, a := range item.WaveformAbbrevs {
@@ -216,9 +220,7 @@ func (s *Service) ImportPlatforms(ctx context.Context, csvBody, actor string) (i
 			}
 		}
 		if len(rowErrs) > 0 {
-			parsed.Errors = append(parsed.Errors, csvtable.RowError{
-				Row: i + 2, Name: item.Designation, Errors: rowErrs,
-			})
+			parsed.Reject(i, item.Designation, rowErrs...)
 			continue
 		}
 		item.CreatedBy = actor
@@ -226,16 +228,10 @@ func (s *Service) ImportPlatforms(ctx context.Context, csvBody, actor string) (i
 		item.CreatedAt = now
 		item.UpdatedAt = now
 		if err := s.repo.Create(ctx, item); err != nil {
-			parsed.Errors = append(parsed.Errors, csvtable.RowError{
-				Row:    i + 2,
-				Name:   item.Designation,
-				Errors: []string{"could not be saved"},
-			})
+			parsed.Reject(i, item.Designation, "could not be saved")
 			continue
 		}
-		created = append(created, item)
 	}
-	parsed.Rows = created
 
-	return csvtable.ImportStatus(len(parsed.Rows), len(parsed.Errors)), parsed, nil
+	return parsed.Finish(), parsed, nil
 }

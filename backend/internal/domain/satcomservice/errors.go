@@ -23,7 +23,7 @@ func (e *Error) GetStatus() int  { return e.Status }
 // The reason this comment used to give was wrong twice over: it said waveforms
 // need a guard "because nets.waveform_abbrev is an enforced reference", and
 // migration 030 had already dropped that column. Waveforms now DO have a guard
-//, but on the strength of a different argument - the abbrev is carried
+// , but on the strength of a different argument - the abbrev is carried
 // as text by equipment records and by platforms, and the compatibility matrix
 // is built on being able to look every carried name up.
 //

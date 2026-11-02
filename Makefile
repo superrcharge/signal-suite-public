@@ -1,6 +1,7 @@
 # Container runtime detection (docker or podman)
 CONTAINER_RUNTIME := $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
-COMPOSE_CMD := $(shell command -v podman-compose >/dev/null 2>&1 && echo podman-compose || echo "$(CONTAINER_RUNTIME) compose")
+# `podman compose`, not the separate podman-compose tool, to match .claude/commands/dev.md.
+COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
 
 # Compose files
 COMPOSE_FILE := compose.yaml
@@ -9,7 +10,7 @@ COMPOSE_DEV_FILE := compose.dev.yaml
 .PHONY: help dev dev-build dev-entra prod prod-build stop stop-v logs logs-app logs-frontend \
         selfhost selfhost-build selfhost-stop selfhost-logs selfhost-backup \
         frontend-install frontend-build frontend-test frontend-check \
-        setup-hooks scan scan-backend scan-frontend seed-nets
+        setup-hooks scan scan-backend scan-frontend seed-nets seed-operation demo-operation
 
 ## help: Show this help message
 help:
@@ -37,6 +38,8 @@ help:
 	@echo ""
 	@echo "Dev data:"
 	@echo "  seed-nets        - Seed the Nets Library with sample data (localhost only)"
+	@echo "  seed-operation   - Seed the sample operation Exercise Silent Harbor (localhost only)"
+	@echo "  demo-operation   - Replay the Operations walkthrough in Chrome and record it"
 	@echo ""
 	@echo "Common targets:"
 	@echo "  stop             - Stop all containers"
@@ -266,3 +269,11 @@ scan-frontend:
 ## seed-nets: Seed the Nets Library with sample data (localhost only)
 seed-nets:
 	@node scripts/seed-dev-nets.mjs
+
+## seed-operation: Seed the sample operation Exercise Silent Harbor (localhost only)
+seed-operation:
+	@node scripts/seed-dev-operation.mjs
+
+## demo-operation: Replay the Operations walkthrough in Chrome and record it
+demo-operation:
+	@node scripts/demo-operation-walkthrough.mjs

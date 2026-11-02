@@ -1,6 +1,6 @@
 # Compose overlay that flips the backend into Entra-auth-enabled mode for
 # local validation against your own Entra tenant. Layered on top of:
-#   docker compose -f compose.yaml -f compose.dev.yaml -f compose.dev.entra.yaml up -d
+#   podman compose -f compose.yaml -f compose.dev.yaml -f compose.dev.entra.yaml up -d
 #
 # Or via the wrapper target:
 #   make dev-entra

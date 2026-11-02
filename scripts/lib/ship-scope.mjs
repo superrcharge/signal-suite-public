@@ -1,6 +1,6 @@
 // Decides which /ship checks a given branch's diff can possibly affect.
 //
-// /ship runs 23 checks unconditionally, and six of them - README, structure.md,
+// /ship used to run every check unconditionally, and six of them - README, structure.md,
 // the two load-on-demand tables, domain context completeness, and memory
 // staleness - are audits of prose keyed to domains and pages. A lockfile bump
 // cannot change what README says about the Features section, and no reading of
@@ -32,7 +32,14 @@ const DOC_TRIGGERS = [
   // and structure.md are what checks 7 and 8 read, but check-docs.mjs holds
   // every tracked .md to the code, and a prose edit anywhere is the exact thing
   // these checks exist to catch drifting.
-  { re: /\.md$/, what: 'tracked prose (checks 7, 8, 9, 10, 11)' },
+  { re: /\.md$/, what: 'tracked prose (checks 7, 8, 9, 10, 10b, 11)' },
+  // check-docs.mjs holds the diagrams to the migrations by table name and count
+  // only. A widened unique key or a new column passes it, and 042 sat undrawn in
+  // data-model.typ for exactly that reason, so a migration alone puts 10b back
+  // in scope. deploy/ is what the architecture and topology diagrams draw.
+  { re: /^backend\/migrations\//, what: 'a migration (checks 10, 10b)' },
+  { re: /^diagrams\//, what: 'a diagram (check 10b)' },
+  { re: /^deploy\//, what: 'the deploy templates (check 10b)' },
 ]
 
 /**
@@ -50,6 +57,49 @@ export function shipScope(changedPaths) {
   }
 
   return { docChecks: triggers.length ? 'required' : 'skip', triggers }
+}
+
+// A changed path means the release sequence (CHANGELOG, tag, release, deploy)
+// applies if it matches any of these.
+//
+// The release image is built by Dockerfile.prod from frontend/ and backend/
+// and nothing else, and a deploy does two things: runs that image and applies
+// the infrastructure templates under deploy/. A diff touching none of those produces a byte-identical
+// image and identical infrastructure, so tagging it only mints a version whose
+// notes describe no change to anything running, and deploying it restarts the
+// App Service to serve what it was already serving. Docs-only PRs
+// already merged without a tag for exactly that reason; this makes the
+// practice a computed answer rather than something the audit has to infer.
+//
+// Same bias as the doc checks: anything that could reach the build puts the
+// release back in scope. The one carve-out is test files, which cannot reach
+// the Go binary or the Vite bundle whatever .dockerignore says - `go build`
+// never compiles a _test.go, and nothing the app imports imports a test.
+const RELEASE_TRIGGERS = [
+  { re: /^backend\//, what: 'backend source (built into the image)' },
+  { re: /^frontend\//, what: 'frontend source (built into the image)' },
+  { re: /^(Dockerfile\.prod|\.dockerignore)$/, what: 'the image build itself' },
+  { re: /^deploy\//, what: 'infrastructure (the deploy/ templates)' },
+]
+
+const TEST_ONLY = [/_test\.go$/, /^frontend\/src\/.*\.test\.tsx?$/, /^frontend\/src\/test\//]
+
+/**
+ * @param {string[]} changedPaths repo-relative, forward-slashed
+ * @returns {{ release: 'required'|'skip', triggers: string[] }}
+ */
+export function releaseScope(changedPaths) {
+  const shipped = changedPaths.filter((p) => !TEST_ONLY.some((re) => re.test(p)))
+  const triggers = []
+
+  for (const { re, what } of RELEASE_TRIGGERS) {
+    const hits = shipped.filter((p) => re.test(p))
+    if (hits.length) {
+      triggers.push(`${what}: ${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ` (+${hits.length - 5} more)` : ''}`)
+    }
+  }
+
+  return { release: triggers.length ? 'required' : 'skip', triggers }
 }
 
 // Normalises the output of `git diff --name-only` and `git status --porcelain`

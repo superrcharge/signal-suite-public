@@ -1,10 +1,12 @@
 package dto
 
 type CreateTransportRequest struct {
-	Name        string `json:"name"        validate:"required,min=1,max=120"`
-	Kind        string `json:"kind"`
-	Provider    string `json:"provider"    validate:"omitempty,max=120"`
-	Description string `json:"description" validate:"omitempty,max=500"`
+	Name         string `json:"name"          validate:"required,min=1,max=120"`
+	Kind         string `json:"kind"`
+	Provider     string `json:"provider"      validate:"omitempty,max=120"`
+	Description  string `json:"description"   validate:"omitempty,max=500"`
+	OwnedBy      string `json:"owned_by"      validate:"omitempty,max=120"`
+	OwnerCountry string `json:"owner_country" validate:"omitempty,max=60"`
 
 	CreatedBy string `json:"-"`
 	UpdatedBy string `json:"-"`
@@ -14,11 +16,13 @@ type CreateTransportRequest struct {
 }
 
 type UpdateTransportRequest struct {
-	ID          string  `json:"-"           validate:"required"`
-	Name        *string `json:"name"        validate:"omitempty,min=1,max=120"`
-	Kind        *string `json:"kind"`
-	Provider    *string `json:"provider"    validate:"omitempty,max=120"`
-	Description *string `json:"description" validate:"omitempty,max=500"`
+	ID           string  `json:"-"             validate:"required"`
+	Name         *string `json:"name"          validate:"omitempty,min=1,max=120"`
+	Kind         *string `json:"kind"`
+	Provider     *string `json:"provider"      validate:"omitempty,max=120"`
+	Description  *string `json:"description"   validate:"omitempty,max=500"`
+	OwnedBy      *string `json:"owned_by"      validate:"omitempty,max=120"`
+	OwnerCountry *string `json:"owner_country" validate:"omitempty,max=60"`
 
 	UpdatedBy string `json:"-"`
 	ActorID   string `json:"-"`

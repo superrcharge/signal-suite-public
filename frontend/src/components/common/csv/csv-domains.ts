@@ -22,6 +22,7 @@ export type CsvResource =
   | 'services'
   | 'transports'
   | 'platforms'
+  | 'organizations'
   | 'nets'
   | 'pace-channels';
 
@@ -231,7 +232,7 @@ export const CSV_DOMAINS: Record<CsvResource, CsvDomainConfig> = {
     // route, and the data behind it exports here.
     resource: 'platforms',
     label: 'Platform Library',
-    description: 'External comms platforms for the compatibility matrix. Waveforms are ; separated.',
+    description: 'External comms platforms for the compatibility matrix. Category (branches) and waveforms are ; separated.',
     exportPath: '/api/v1/export/platforms',
     filenameStem: 'signal-suite-platforms',
     facets: [],
@@ -240,13 +241,29 @@ export const CSV_DOMAINS: Record<CsvResource, CsvDomainConfig> = {
     // canWritePace, matching the platform routes.
     writeGate: 'canWritePace',
   },
+  organizations: {
+    // The participants an operation can have join it. Import only creates: the
+    // key is what a participant row points at, so a key that already exists is
+    // skipped as a duplicate rather than overwritten.
+    resource: 'organizations',
+    label: 'Organization Library',
+    description: 'Participants an operation can have join it. Key is a lowercase slug and never changes; import only adds.',
+    exportPath: '/api/v1/export/organizations',
+    filenameStem: 'signal-suite-organizations',
+    facets: [],
+    templatePath: '/api/v1/organizations/import/template',
+    importPath: '/api/v1/organizations/import',
+    // canWritePace, matching the organization routes: an organization is a
+    // participant of an operation, which PACE's writers plan.
+    writeGate: 'canWritePace',
+  },
   nets: {
     // Per squadron, which is why the paths carry :section and there is no
     // sections facet: a net belongs to the squadron that maintains it, and there
     // is no cross-section list to narrow.
     resource: 'nets',
     label: 'Nets',
-    description: 'One squadron’s nets. Rows import into the squadron you are viewing.',
+    description: 'One squadron’s nets. Rows import into the squadron picked in the dialog.',
     exportPath: '/api/v1/export/nets/:section',
     filenameStem: 'signal-suite-nets',
     facets: [],
@@ -279,6 +296,7 @@ export const CSV_DOMAIN_ORDER: CsvResource[] = [
   'services',
   'transports',
   'platforms',
+  'organizations',
   'nets',
   'pace-channels',
 ];

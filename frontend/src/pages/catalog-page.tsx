@@ -109,7 +109,7 @@ export function CatalogPage() {
       });
     };
 
-  // The tab lives in the URL so the dashboard tiles can deep-link to it and so
+  // The tab lives in the URL so the Stats tiles can deep-link to it and so
   // a filtered view is shareable. Anything unrecognized falls back to All.
   const typeParam = searchParams.get('type');
   const filter: CatalogTab = isCatalogTab(typeParam) ? typeParam : 'all';
@@ -201,7 +201,7 @@ export function CatalogPage() {
   );
   // Applied versus held, in one place. `Filters (n)`, `Clear (n)`, the rail's
   // footer and the empty state all read `appliedCount`, so no control can print
-  // a number for terms the page is not acting on - which was that bug.
+  // a number for terms the page is not acting on - which was #233.
   //
   // The label pool is the WHOLE equipment list, not `pool`. On
   // ?type=satcom&f.wf=tsm the tab pool holds only SATCOM records, so the only

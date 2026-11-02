@@ -23,7 +23,7 @@ var csvTable = csvtable.Table[Kit]{
 
 	Preamble: []string{
 		"REQUIRED: name (case-insensitive unique) and type. Everything else is optional.",
-		"Delete every # line and the EXAMPLE rows. Keep the header row below.",
+		"Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.",
 	},
 
 	Columns: []csvtable.Column[Kit]{

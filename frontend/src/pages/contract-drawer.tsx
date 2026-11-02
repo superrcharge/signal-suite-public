@@ -264,7 +264,7 @@ export function ContractDrawer({ open, mode, contract, focusField, onClose }: Co
             value={form.poc_name}
             onChange={set('poc_name')}
             fullWidth size="small"
-            placeholder="e.g. Jane Doe"
+            placeholder="e.g. Mr. Daniel Reyes"
           />
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField label="POC Email" value={form.poc_email} onChange={set('poc_email')} fullWidth size="small" type="email" />

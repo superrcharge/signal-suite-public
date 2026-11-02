@@ -1,6 +1,7 @@
 package csvtable_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -239,6 +240,127 @@ func TestParse_IgnoresCommentsAndBlankLines(t *testing.T) {
 	}
 	if len(result.Rows) != 1 {
 		t.Fatalf("want 1 row, got %d", len(result.Rows))
+	}
+}
+
+// rowsOf is the row numbers an import reported, in order.
+func rowsOf(errs []csvtable.RowError) []int {
+	out := make([]int, len(errs))
+	for i, e := range errs {
+		out[i] = e.Row
+	}
+	return out
+}
+
+func TestParse_RowNumbersAreFileLines(t *testing.T) {
+	// The template ships with its instructions as # lines and the importer
+	// accepts them, so the number a user is given has to be the line in the file
+	// they uploaded. Dropping the comments before counting reported every row
+	// short by the size of the preamble.
+	raw := "# instructions\n# more instructions\n\nname,status\nAlpha,on\n,on\nGamma,bogus\n"
+	result, err := bind(t).Parse(raw, nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got, want := rowsOf(result.Errors), []int{6, 7}; !slices.Equal(got, want) {
+		t.Errorf("error rows = %v, want %v", got, want)
+	}
+	if got, want := result.Lines, []int{5}; !slices.Equal(got, want) {
+		t.Errorf("lines = %v, want %v", got, want)
+	}
+}
+
+func TestParse_QuotedNewlineKeepsLaterRowNumbersRight(t *testing.T) {
+	raw := "name,status\n\"Al\npha\",on\n,on\n"
+	result, err := bind(t).Parse(raw, nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got, want := rowsOf(result.Errors), []int{4}; !slices.Equal(got, want) {
+		t.Errorf("error rows = %v, want %v", got, want)
+	}
+}
+
+func TestParse_ShortRowReadsAsBlankCells(t *testing.T) {
+	// Spreadsheet tools trim trailing empty cells. The reader's own width check
+	// failed that read, and a failed read ended the loop, dropping the row and
+	// every row after it without a word.
+	result, err := bind(t).Parse("name,status,owner\nAlpha\nBeta,off,x\n", nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("want no errors, got %+v", result.Errors)
+	}
+	if len(result.Rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(result.Rows))
+	}
+	if result.Rows[0].Status != "on" {
+		t.Errorf("short row status = %q, want the default", result.Rows[0].Status)
+	}
+}
+
+func TestParse_LongRowIsARowErrorAndTheRestImport(t *testing.T) {
+	result, err := bind(t).Parse("name,status\nAlpha,on,stray\nBeta,on\n", nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0].Name != "Beta" {
+		t.Fatalf("want only Beta imported, got %+v", result.Rows)
+	}
+	if len(result.Errors) != 1 || result.Errors[0].Row != 2 ||
+		!strings.Contains(result.Errors[0].Errors[0], "double quotes") {
+		t.Errorf("want one row-2 error about quoting, got %+v", result.Errors)
+	}
+}
+
+func TestParse_MalformedQuoteIsARowErrorAndTheRestImport(t *testing.T) {
+	result, err := bind(t).Parse("name,status\nAl\"pha,on\nBeta,on\n", nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0].Name != "Beta" {
+		t.Fatalf("want Beta still imported, got %+v", result.Rows)
+	}
+	if got, want := result.Lines, []int{3}; !slices.Equal(got, want) {
+		t.Errorf("lines = %v, want %v", got, want)
+	}
+	if len(result.Errors) != 1 || result.Errors[0].Row != 2 {
+		t.Errorf("want one error at row 2, got %+v", result.Errors)
+	}
+}
+
+func TestReject_NumbersByFileLineAndFinishKeepsLinesAligned(t *testing.T) {
+	// Line 2 fails in the parser, so Rows starts at line 3. A service rejecting
+	// Rows[1] must report line 4 - `i + 2` said 3, which is Alpha.
+	result, err := bind(t).Parse("name,status\n,on\nAlpha,on\nBeta,on\nGamma,on\n", nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	result.Reject(1, "Beta", "could not be saved")
+
+	if status := result.Finish(); status != 207 {
+		t.Errorf("status = %d, want 207", status)
+	}
+	if got, want := rowsOf(result.Errors), []int{2, 4}; !slices.Equal(got, want) {
+		t.Errorf("error rows = %v, want %v, in order", got, want)
+	}
+	if len(result.Rows) != 2 || result.Rows[0].Name != "Alpha" || result.Rows[1].Name != "Gamma" {
+		t.Errorf("rows = %+v, want Alpha and Gamma", result.Rows)
+	}
+	if got, want := result.Lines, []int{3, 5}; !slices.Equal(got, want) {
+		t.Errorf("lines = %v, want %v", got, want)
+	}
+}
+
+func TestFinish_EveryRowRejectedIs400(t *testing.T) {
+	result, err := bind(t).Parse("name\nAlpha\n", nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	result.Reject(0, "Alpha", "could not be saved")
+	if status := result.Finish(); status != 400 {
+		t.Errorf("status = %d, want 400", status)
 	}
 }
 

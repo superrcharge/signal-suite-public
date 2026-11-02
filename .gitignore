@@ -39,6 +39,10 @@ Thumbs.db
 # produced it. Without this rule it reappears and /ship step 4 flags it again.
 .lavish/
 
+# Operations walkthrough recordings from demo-operation-walkthrough.mjs.
+# Regenerable, and too large to track.
+_project/demo/
+
 # draw.io temp files
 .$*.drawio.bkp
 .$*.drawio.dtmp

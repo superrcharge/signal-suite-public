@@ -5,6 +5,7 @@ import {
   DEFAULT_PIXEL_RATIO,
   EMU_PER_INCH,
   PACE_SLIDE,
+  WIDE_SLIDE,
   emu,
   pixelDimensions,
   slideImagePlacement,
@@ -12,6 +13,13 @@ import {
 
 const PACE_SHEET = { width: 1056, height: 816 };
 const CATALOG_SHEET = { width: 816, height: 1056 };
+
+describe('widescreen slide', () => {
+  it('is 16:9, so a 1600 x 900 sheet bleeds to every edge', () => {
+    expect(WIDE_SLIDE.w / WIDE_SLIDE.h).toBeCloseTo(16 / 9, 3);
+    expect(slideImagePlacement(WIDE_SLIDE, { width: 1600, height: 900 })).toEqual({ x: 0, y: 0, w: WIDE_SLIDE.w, h: WIDE_SLIDE.h });
+  });
+});
 
 describe('slide sizes', () => {
   it('are US Letter, one each way up', () => {

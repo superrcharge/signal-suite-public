@@ -5,6 +5,7 @@ package user
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -448,5 +449,73 @@ func TestRepository_CountAllByRole(t *testing.T) {
 	// what overlays ValidRoles to turn that into an explicit zero.
 	if _, present := counts[RoleViewer]; present {
 		t.Errorf("expected viewer to be absent from the repository map, got %v", counts)
+	}
+}
+
+// Two identities whose tokens carry neither email nor upn both sync as
+// email = ”. Until migration 053 the column was UNIQUE, so the second insert
+// failed on users_email_key and that user was answered 500 on every request,
+// which is a lockout keyed to the identity rather than to anything they did.
+// A real address stays unique.
+func TestRepository_Upsert_EmptyEmailDoesNotCollide(t *testing.T) {
+	repo := NewRepository(testDB)
+	cleanupUsers(t)
+	now := time.Now()
+
+	for _, subject := range []string{"oid-guest-1", "oid-guest-2"} {
+		subject := subject
+		u := &User{
+			ID:          uuid.New().String(),
+			OIDCSubject: &subject,
+			Email:       "",
+			Name:        "Guest " + subject,
+			Roles:       []string{RoleViewer},
+			Preferences: DefaultPreferences(),
+			LastLoginAt: &now,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := repo.Upsert(context.Background(), u); err != nil {
+			t.Fatalf("Upsert with empty email failed for %s: %v", subject, err)
+		}
+	}
+
+	first, second := "oid-real-1", "oid-real-2"
+	real := &User{
+		ID: uuid.New().String(), OIDCSubject: &first, Email: "real@example.mil", Name: "Real One",
+		Roles: []string{RoleViewer}, Preferences: DefaultPreferences(), CreatedAt: now, UpdatedAt: now,
+	}
+	if err := repo.Upsert(context.Background(), real); err != nil {
+		t.Fatalf("Upsert with a real email failed: %v", err)
+	}
+	dup := &User{
+		ID: uuid.New().String(), OIDCSubject: &second, Email: "real@example.mil", Name: "Real Two",
+		Roles: []string{RoleViewer}, Preferences: DefaultPreferences(), CreatedAt: now, UpdatedAt: now,
+	}
+	if err := repo.Upsert(context.Background(), dup); err == nil {
+		t.Fatal("a second user with the same real email must still be refused")
+	}
+}
+
+// A DoD display name carries rank, component and unit, and the column was
+// VARCHAR(100). Migration 053 widens it to 255.
+func TestRepository_Upsert_LongDisplayName(t *testing.T) {
+	repo := NewRepository(testDB)
+	cleanupUsers(t)
+	now := time.Now()
+
+	subject := "oid-long-name"
+	u := &User{
+		ID:          uuid.New().String(),
+		OIDCSubject: &subject,
+		Email:       "long@example.mil",
+		Name:        strings.Repeat("X", 150),
+		Roles:       []string{RoleViewer},
+		Preferences: DefaultPreferences(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := repo.Upsert(context.Background(), u); err != nil {
+		t.Fatalf("Upsert with a 150-character name failed: %v", err)
 	}
 }

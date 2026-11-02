@@ -2,30 +2,62 @@ import { useNavigate } from 'react-router';
 import type { Equipment } from '@/types';
 import { EquipmentPhoto } from './EquipmentPhoto';
 import { chipSty } from './chip-styles';
+import CheckIcon from '@mui/icons-material/Check';
 import { CONTENT_LINE } from '@/components/common/banner-controls';
 
 interface BrowseGridProps {
   items: Equipment[];
+  /** When given, a card click selects instead of navigating to the datasheet. */
+  onSelect?: (eq: Equipment) => void;
+  /** Ids drawn as selected; only meaningful alongside `onSelect`. */
+  selectedIds?: ReadonlySet<string>;
 }
 
-interface TerminalCardProps {
+export interface TerminalCardProps {
   equipment: Equipment;
+  onSelect?: (eq: Equipment) => void;
+  selected?: boolean;
 }
 
-function TerminalCard({ equipment: eq }: TerminalCardProps) {
+export function TerminalCard({ equipment: eq, onSelect, selected = false }: TerminalCardProps) {
   const navigate = useNavigate();
+  const activate = () => {
+    if (onSelect) onSelect(eq);
+    else void navigate(`/catalog/${eq.id}`);
+  };
   const isSatcom = eq.terminal_type !== 'radio';
   const bands = (eq.data?.bands ?? []).map(b => b.band).filter(Boolean);
   const services = (eq.data?.services ?? []).map(s => s.abbrev).filter(Boolean);
   const specs = eq.data?.standard_specs;
   const orbit = isSatcom && specs && 'orbit' in specs ? specs.orbit : undefined;
+  // As a toggle the card draws a heavier, lighter border so it reads as a
+  // control to press rather than a tile to open; as a link it keeps the
+  // catalog's hairline. One width per mode, so selecting does not reflow.
+  // Written per side rather than as `border`, because jsdom discards a
+  // `border` shorthand holding a var() once `borderTop` follows it, which
+  // left the rule invisible to the test that holds it.
+  const restingBorder = onSelect ? '2px solid var(--shf-graphite-400)' : '1px solid var(--shf-graphite-600)';
+  const selectedBorder = onSelect ? '2px solid var(--shf-amber)' : '1px solid var(--shf-amber)';
+  const sides = selected ? selectedBorder : restingBorder;
 
   return (
     <div
-      onClick={() => navigate(`/catalog/${eq.id}`)}
+      onClick={activate}
+      {...(onSelect ? {
+        role: 'button',
+        'aria-pressed': selected,
+        tabIndex: 0,
+        onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            activate();
+          }
+        },
+      } : {})}
       style={{
         background: 'var(--shf-graphite-800)',
-        border: '1px solid var(--shf-graphite-600)',
+        borderLeft: sides, borderRight: sides, borderBottom: sides,
         borderTop: '3px solid var(--shf-amber)',
         borderRadius: 0,
         cursor: 'pointer',
@@ -36,7 +68,7 @@ function TerminalCard({ equipment: eq }: TerminalCardProps) {
         e.currentTarget.style.borderColor = 'var(--shf-amber)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--shf-graphite-600)';
+        e.currentTarget.style.borderColor = selected ? 'var(--shf-amber)' : onSelect ? 'var(--shf-graphite-400)' : 'var(--shf-graphite-600)';
         e.currentTarget.style.borderTopColor = 'var(--shf-amber)';
       }}
     >
@@ -72,9 +104,23 @@ function TerminalCard({ equipment: eq }: TerminalCardProps) {
           fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700,
           letterSpacing: '0.14em', textTransform: 'uppercase',
         }}>{isSatcom ? 'SATCOM' : 'Radio'}</span>
+        {selected && onSelect && (
+          <span
+            data-testid="card-selected-badge"
+            aria-hidden="true"
+            style={{
+              position: 'absolute', top: 8, right: 8, zIndex: 1,
+              width: 22, height: 22, borderRadius: '50%',
+              background: 'var(--shf-amber)', color: 'var(--shf-black)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <CheckIcon style={{ fontSize: 16 }} aria-hidden="true" />
+          </span>
+        )}
         {orbit && isSatcom && (
           <span style={{
-            position: 'absolute', top: 8, right: 8,
+            position: 'absolute', top: 8, right: selected && onSelect ? 38 : 8,
             padding: '2px 7px', borderRadius: 2,
             background: 'rgba(0,0,0,0.7)', color: 'var(--shf-amber)',
             fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700,
@@ -119,10 +165,10 @@ function TerminalCard({ equipment: eq }: TerminalCardProps) {
           marginTop: 10, paddingTop: 10,
           borderTop: '1px solid var(--shf-graphite-700)',
         }}>
-          {bands.map(b => (
+          {Array.from(new Set(bands)).map(b => (
             <span key={'b-' + b} style={chipSty('amber')}>{b}</span>
           ))}
-          {services.map(s => (
+          {Array.from(new Set(services)).map(s => (
             <span key={'s-' + s} style={chipSty('paper')}>{s}</span>
           ))}
           {bands.length === 0 && services.length === 0 && (
@@ -136,7 +182,7 @@ function TerminalCard({ equipment: eq }: TerminalCardProps) {
   );
 }
 
-export function BrowseGrid({ items }: BrowseGridProps) {
+export function BrowseGrid({ items, onSelect, selectedIds }: BrowseGridProps) {
   if (items.length === 0) {
     return (
       <div style={{
@@ -154,7 +200,14 @@ export function BrowseGrid({ items }: BrowseGridProps) {
       gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
       gap: 18,
     }}>
-      {items.map(eq => <TerminalCard key={eq.id} equipment={eq} />)}
+      {items.map(eq => (
+        <TerminalCard
+          key={eq.id}
+          equipment={eq}
+          onSelect={onSelect}
+          selected={selectedIds?.has(eq.id) ?? false}
+        />
+      ))}
     </div>
   );
 }

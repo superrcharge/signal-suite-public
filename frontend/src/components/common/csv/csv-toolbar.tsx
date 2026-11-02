@@ -10,6 +10,7 @@ import { useCsvImport } from '@/services/csv-service';
 import { CsvDialog, type CsvDialogMode } from './csv-dialog';
 import { CSV_DOMAINS, withSection, type CsvResource } from './csv-domains';
 import { CsvImportResultDialog, type CsvImportResult } from './csv-import-result-dialog';
+import { importErrorMessage } from './import-error-message';
 
 interface CsvToolbarProps {
   resource: CsvResource;
@@ -78,8 +79,8 @@ export function CsvToolbar({ resource, section, compact = false }: CsvToolbarPro
       }
       // Anything skipped opens the dialog. A toast cannot show eight bad rows.
       setImportResult(result);
-    } catch {
-      showToast('Import failed. Please try again.', { severity: 'error' });
+    } catch (err) {
+      showToast(importErrorMessage(err), { severity: 'error' });
     }
   };
 

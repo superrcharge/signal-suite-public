@@ -1,5 +1,6 @@
 /**
- * Builds the export spec for each of the two sheets.
+ * Builds the export spec for each exportable sheet: PACE and catalog at a
+ * fixed page size, compare, compatibility, library and nets measured.
  *
  * A function returning a spec, rather than a spec, because the marked element
  * does not exist until the sheet has rendered. Resolving it at click time also
@@ -8,9 +9,10 @@
  * Kept out of the pages so the page change is one line each, and out of
  * `sheet-export.ts` so that file does not need to know a sheet's dimensions.
  */
-import { catalogStem, compareStem, compatStem, libraryStem, netsStem, paceStem, type SheetExportSpec } from './sheet-export';
+import { catalogStem, compareStem, compatStem, libraryStem, netsStem, operationMatrixStem, operationStem, paceStem, type SheetExportSpec } from './sheet-export';
 import { findSheetRoot, omittedBlockHeight } from './sheet-root';
 import { CATALOG_SLIDE, PACE_SLIDE } from './slide-geometry';
+import { PACE_THEATER_LABELS, type PaceTheater } from '@/types';
 
 /** US Letter at 96dpi, matching SheetPreview's PAGE_W/PAGE_H. */
 const PACE_W = 1056;
@@ -20,7 +22,11 @@ const PACE_H = 816;
 const CATALOG_W = 816;
 const CATALOG_H = 1056;
 
-export function paceExportSpec(section: string, label: string): () => SheetExportSpec | null {
+export function paceExportSpec(
+  section: string,
+  label: string,
+  theater: PaceTheater,
+): () => SheetExportSpec | null {
   return () => {
     const root = findSheetRoot();
     if (!root) return null;
@@ -29,8 +35,8 @@ export function paceExportSpec(section: string, label: string): () => SheetExpor
       width: PACE_W,
       height: PACE_H,
       slide: PACE_SLIDE,
-      stem: paceStem(section),
-      title: `${label} comms card`,
+      stem: paceStem(section, theater),
+      title: `${label} ${PACE_THEATER_LABELS[theater]} comms card`,
       // The PACE card alone gets editable text on the slide. See the flag's
       // doc comment for why the catalog datasheet cannot.
       nativeText: true,
@@ -156,6 +162,29 @@ export function compatExportSpec(): () => SheetExportSpec | null {
  */
 export function libraryExportSpec(label: string): () => SheetExportSpec | null {
   return measuredSpec(() => libraryStem(label), `${label} library`);
+}
+
+/**
+ * The operation page's Web view as it stands: the phase on screen, drawn in the
+ * mode it is in, sized at click time like the libraries because its height is
+ * its requirement list. The .png and the clipboard take this; the .pptx takes
+ * the whole deck instead, one native slide per phase (see
+ * `phase-deck-native.ts`).
+ */
+export function operationExportSpec(name: string): () => SheetExportSpec | null {
+  return measuredSpec(() => operationStem(name), `${name} comms by phase`);
+}
+
+/**
+ * The operation page's Matrix view as it stands, for the .png and the clipboard:
+ * the paper the grid is drawn on, phase chips left off because they sit above
+ * it. Measured at click time like the libraries, because its size is the grid's.
+ * The marked paper is as wide as the grid at its narrowest even when the page
+ * scrolls it sideways (see `InteropFrame`), so an organization the reader opened
+ * into one column per asset is in the picture whole.
+ */
+export function operationMatrixExportSpec(name: string): () => SheetExportSpec | null {
+  return measuredSpec(() => operationMatrixStem(name), `${name} matrix`);
 }
 
 /** One squadron's nets table for one radio, sized at click time like the libraries. */

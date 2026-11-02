@@ -14,7 +14,7 @@
 //      overwritten, so running it twice is safe.
 //
 // This is NOT a migration. `023_remove_seed_data.sql` exists because demo rows
-// from migrations 006, 014 and 016 shipped to production and now sit beside real
+// from migrations 006, 014 and 016 shipped to a deployed environment and now sit beside real
 // records. Seeding through the API, from a script that refuses to talk to
 // anything but localhost, cannot repeat that.
 //

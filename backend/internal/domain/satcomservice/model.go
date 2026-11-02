@@ -11,8 +11,12 @@ type SatcomService struct {
 	Abbrev      string
 	Name        string
 	Description string
-	CreatedBy   string
-	UpdatedBy   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// OwnedBy is the ultimate controlling parent of the operator, which is not
+	// the operator itself: the operator stays the prefix of Name.
+	OwnedBy      string
+	OwnerCountry string
+	CreatedBy    string
+	UpdatedBy    string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

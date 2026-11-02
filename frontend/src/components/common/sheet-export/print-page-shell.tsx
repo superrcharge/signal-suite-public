@@ -59,6 +59,8 @@ function usePrintPageStyle(css: string): void {
  * routes can never select each other's root. `rootStyle` is for a sheet that
  * prints on its own paper, such as the compatibility matrix; the shell always
  * sets `print-color-adjust: exact` so the palette survives the print dialog.
+ * `toolbar` is screen-only controls for what the page shows, drawn between
+ * Back and the document actions; it sits outside the root, so it never prints.
  */
 export function PrintPageShell({
   orientation,
@@ -69,6 +71,7 @@ export function PrintPageShell({
   printDisabled = false,
   rootStyle,
   rootAriaLabel,
+  toolbar,
   children,
 }: {
   orientation: 'portrait' | 'landscape';
@@ -79,18 +82,35 @@ export function PrintPageShell({
   printDisabled?: boolean;
   rootStyle?: CSSProperties;
   rootAriaLabel?: string;
+  toolbar?: ReactNode;
   children: ReactNode;
 }) {
   usePrintPageStyle(printOnlyCss(rootAttr, orientation));
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--shf-graphite-900)', padding: SHELL_PAD }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <Button variant="outlined" onClick={onBack} sx={BANNER_BTN_PAPER_SX}>
-          ← {backLabel}
-        </Button>
-        <DocumentActions inset={SHELL_PAD / 8} onPrint={onPrint} printDisabled={printDisabled} />
-      </Box>
+      {toolbar ? (
+        // Three columns so the toolbar sits on the page's centre line, not the
+        // centre of whatever Back and Print leave between them.
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Box sx={{ justifySelf: 'start' }}>
+            <Button variant="outlined" onClick={onBack} sx={BANNER_BTN_PAPER_SX}>
+              ← {backLabel}
+            </Button>
+          </Box>
+          <Box data-testid="print-toolbar" sx={{ justifySelf: 'center' }}>{toolbar}</Box>
+          <Box sx={{ justifySelf: 'end' }}>
+            <DocumentActions inset={SHELL_PAD / 8} onPrint={onPrint} printDisabled={printDisabled} />
+          </Box>
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Button variant="outlined" onClick={onBack} sx={BANNER_BTN_PAPER_SX}>
+            ← {backLabel}
+          </Button>
+          <DocumentActions inset={SHELL_PAD / 8} onPrint={onPrint} printDisabled={printDisabled} />
+        </Box>
+      )}
 
       <div
         {...{ [rootAttr]: '' }}

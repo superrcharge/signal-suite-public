@@ -110,7 +110,7 @@ test('shouldSkip does not exempt authored source', () => {
     'frontend/src/pages/kits-page.tsx',
     'frontend/src/utils/index.ts',
     'backend/migrations/014_create_contracts.sql',
-    'compose.selfhost.yaml',
+    'deploy/main.tf',
     // Near-misses for the SKIP patterns, which is where an over-broad regex
     // would quietly start exempting real code.
     'backend/docs/openapi.json',

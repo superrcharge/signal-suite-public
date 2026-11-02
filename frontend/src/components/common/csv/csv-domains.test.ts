@@ -80,10 +80,12 @@ describe('CSV domain registry', () => {
     //     path a PACE tier names, so it follows the card rather than the
     //     catalog; nothing in the equipment domain references transports.
     //     Platforms likewise: they are the input to a PACE across a joint force.
+    //     Organizations are the participants an operation checks in, which
+    //     PACE's writers plan, and organization/routes.go gates them the same.
     const gated = (gate: string) =>
       entries.filter((c) => c.writeGate === gate).map((c) => c.resource).sort();
 
     expect(gated('canWriteRadio')).toEqual(['equipment', 'waveforms']);
-    expect(gated('canWritePace')).toEqual(['nets', 'pace-channels', 'platforms', 'transports']);
+    expect(gated('canWritePace')).toEqual(['nets', 'organizations', 'pace-channels', 'platforms', 'transports']);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Shared kit constants used by the kits page, drawer, and dashboard.
+ * Shared kit constants used by the kits page, drawer, and Stats page.
  */
 
 export const KIT_TYPE_OPTIONS = [

@@ -29,8 +29,9 @@ const (
 // first-user-wins bootstrap and default behavior for new logins.
 //
 // RoleRTO is scoped rather than global: it grants writes to the radio side
-// of the catalog only - waveforms, and equipment records whose terminal_type
-// is "radio". Because terminal_type is a column rather than a route
+// of the catalog - waveforms, and equipment records whose terminal_type
+// is "radio" - and to nets, PACE, transports, platforms, operations and
+// organizations. Because terminal_type is a column rather than a route
 // boundary, that restriction cannot be enforced by RequireRole alone and is
 // completed per-record in the equipment service. See .claude/context/authz.md.
 const (
@@ -38,7 +39,8 @@ const (
 	RoleEditor = "editor"
 	RoleViewer = "viewer"
 	RoleRTO    = "rto"
-	// RolePlanner writes nets and PACE cards and reads the catalog. Like
+	// RolePlanner writes nets, PACE cards, transports, platforms, operations
+	// and organizations, and reads the catalog. Like
 	// RoleRTO it is scoped rather than global, and it is a role alongside rto
 	// rather than a narrowing of it: rto keeps writing everything it did.
 	//

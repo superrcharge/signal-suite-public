@@ -52,6 +52,7 @@ vi.mock('@/services', () => ({
   useUpdateSection: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSection: () => ({ mutate: vi.fn(), isPending: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   REASSIGN_TO_NONE: '__none__',
 }));
 

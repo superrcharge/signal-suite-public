@@ -19,7 +19,7 @@ import (
 // lookup below exists to TELL a librarian what offers an entry, not to stop
 // them removing it. The waveform side guards because the compatibility matrix
 // depends on every carried name being lookupable; a service has no such
-// consumer. 
+// consumer.
 type Service struct {
 	repo   Repository
 	audit  contracts.AuditRecorder
@@ -64,14 +64,16 @@ func (svc *Service) recordAudit(ctx context.Context, in contracts.AuditEventInpu
 
 func toResponse(s *SatcomService) dto.ServiceResponse {
 	return dto.ServiceResponse{
-		ID:          s.ID,
-		Abbrev:      s.Abbrev,
-		Name:        s.Name,
-		Description: s.Description,
-		CreatedBy:   s.CreatedBy,
-		UpdatedBy:   s.UpdatedBy,
-		CreatedAt:   s.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   s.UpdatedAt.Format(time.RFC3339),
+		ID:           s.ID,
+		Abbrev:       s.Abbrev,
+		Name:         s.Name,
+		Description:  s.Description,
+		OwnedBy:      s.OwnedBy,
+		OwnerCountry: s.OwnerCountry,
+		CreatedBy:    s.CreatedBy,
+		UpdatedBy:    s.UpdatedBy,
+		CreatedAt:    s.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    s.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -90,6 +92,8 @@ func diffService(old, updated *SatcomService) map[string]any {
 	addStr("abbrev", old.Abbrev, updated.Abbrev)
 	addStr("name", old.Name, updated.Name)
 	addStr("description", old.Description, updated.Description)
+	addStr("owned_by", old.OwnedBy, updated.OwnedBy)
+	addStr("owner_country", old.OwnerCountry, updated.OwnerCountry)
 
 	return changes
 }
@@ -119,13 +123,15 @@ func (svc *Service) CreateService(ctx context.Context, req *dto.CreateServiceReq
 
 	now := time.Now().UTC()
 	s := &SatcomService{
-		Abbrev:      abbrev,
-		Name:        strings.TrimSpace(req.Name),
-		Description: strings.TrimSpace(req.Description),
-		CreatedBy:   req.CreatedBy,
-		UpdatedBy:   req.UpdatedBy,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		Abbrev:       abbrev,
+		Name:         strings.TrimSpace(req.Name),
+		Description:  strings.TrimSpace(req.Description),
+		OwnedBy:      strings.TrimSpace(req.OwnedBy),
+		OwnerCountry: strings.TrimSpace(req.OwnerCountry),
+		CreatedBy:    req.CreatedBy,
+		UpdatedBy:    req.UpdatedBy,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if err := svc.repo.Create(ctx, s); err != nil {
@@ -180,6 +186,12 @@ func (svc *Service) UpdateService(ctx context.Context, req *dto.UpdateServiceReq
 	}
 	if req.Description != nil {
 		s.Description = strings.TrimSpace(*req.Description)
+	}
+	if req.OwnedBy != nil {
+		s.OwnedBy = strings.TrimSpace(*req.OwnedBy)
+	}
+	if req.OwnerCountry != nil {
+		s.OwnerCountry = strings.TrimSpace(*req.OwnerCountry)
 	}
 
 	s.UpdatedBy = req.UpdatedBy

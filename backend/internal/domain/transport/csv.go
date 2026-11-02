@@ -29,7 +29,7 @@ var csvTable = csvtable.Table[Transport]{
 	Preamble: []string{
 		"REQUIRED: name (case-insensitive unique).",
 		"Kind is open: the four below are suggestions, not a closed list.",
-		"Delete every # line and the EXAMPLE rows. Keep the header row below.",
+		"Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.",
 	},
 
 	Columns: []csvtable.Column[Transport]{
@@ -58,6 +58,20 @@ var csvTable = csvtable.Table[Transport]{
 			Get:     csvtable.Str(func(t *Transport) string { return t.Provider }),
 			Set:     csvtable.SetStr(func(t *Transport, v string) { t.Provider = strings.TrimSpace(v) }),
 			Example: []string{"Example Telecom"},
+		},
+		{
+			Key: "owned_by", Label: "Owned By",
+			Note:    "Owned by: the ultimate controlling parent, the company itself if nothing controls it, or the government body for a state system.",
+			Get:     csvtable.Str(func(t *Transport) string { return t.OwnedBy }),
+			Set:     csvtable.SetStr(func(t *Transport, v string) { t.OwnedBy = strings.TrimSpace(v) }),
+			Example: []string{"Example Holdings"},
+		},
+		{
+			Key: "owner_country", Label: "Owner Country",
+			Note:    "Owner country: where that owner is headquartered, as a plain country name.",
+			Get:     csvtable.Str(func(t *Transport) string { return t.OwnerCountry }),
+			Set:     csvtable.SetStr(func(t *Transport, v string) { t.OwnerCountry = strings.TrimSpace(v) }),
+			Example: []string{"United States"},
 		},
 		{
 			Key: "description", Label: "Description",
@@ -140,7 +154,6 @@ func (s *Service) ImportTransports(ctx context.Context, csvBody, actor string) (
 	}
 
 	now := time.Now().UTC()
-	created := make([]*Transport, 0, len(parsed.Rows))
 	for i, item := range parsed.Rows {
 		if item.Kind == "" {
 			item.Kind = NormaliseKind("")
@@ -150,16 +163,10 @@ func (s *Service) ImportTransports(ctx context.Context, csvBody, actor string) (
 		item.CreatedAt = now
 		item.UpdatedAt = now
 		if err := s.repo.Create(ctx, item); err != nil {
-			parsed.Errors = append(parsed.Errors, csvtable.RowError{
-				Row:    i + 2,
-				Name:   item.Name,
-				Errors: []string{"could not be saved"},
-			})
+			parsed.Reject(i, item.Name, "could not be saved")
 			continue
 		}
-		created = append(created, item)
 	}
-	parsed.Rows = created
 
-	return csvtable.ImportStatus(len(parsed.Rows), len(parsed.Errors)), parsed, nil
+	return parsed.Finish(), parsed, nil
 }

@@ -90,3 +90,18 @@ export const TOGGLE_SX = {
     borderColor: 'divider',
   },
 } as const
+
+/**
+ * A grid of fixed-width picker tiles that reflows with the content width:
+ * five per row beside the open sidebar at the 1280x720 floor, more once the
+ * sidebar is collapsed or the window is wider, never stretched.
+ *
+ * Shared by the Dashboard and the Operations picker so their tiles stay one
+ * size. The Operations tiles used `minmax(200px, 1fr)` and came out about
+ * 242px wide, four to a row, beside the Dashboard's five.
+ */
+export const TILE_GRID_SX = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, 176px)',
+  gap: 3,
+} as const

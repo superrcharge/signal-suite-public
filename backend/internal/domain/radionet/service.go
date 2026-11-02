@@ -90,8 +90,19 @@ func (s *Service) CreateNet(ctx context.Context, req *dto.CreateNetRequest, resp
 		return http.StatusBadRequest, ErrInvalidRadioType
 	}
 
-	// Unique per squadron, not globally: two squadrons may each run a FIRES.
-	taken, err := s.repo.NameExists(ctx, section, name)
+	// Empty is CONUS, not both: a caller that predates theaters is describing
+	// the only theater there was.
+	theater := strings.TrimSpace(req.Theater)
+	if theater == "" {
+		theater = TheaterCONUS
+	}
+	if !IsValidTheater(theater) {
+		return http.StatusBadRequest, ErrInvalidTheater
+	}
+
+	// Unique per squadron and per theater's list, not globally: two squadrons
+	// may each run a FIRES, and so may CONUS and OCONUS.
+	taken, err := s.repo.NameExists(ctx, section, theater, name)
 	if err != nil {
 		return http.StatusInternalServerError, ErrNetInternalError
 	}
@@ -106,6 +117,7 @@ func (s *Service) CreateNet(ctx context.Context, req *dto.CreateNetRequest, resp
 		Name:        name,
 		NetID:       strings.TrimSpace(req.NetID),
 		RadioType:   radioType,
+		Theater:     theater,
 		TxFreq:      strings.TrimSpace(req.TxFreq),
 		RxFreq:      strings.TrimSpace(req.RxFreq),
 		FreqUnit:    unit,
@@ -150,9 +162,22 @@ func (s *Service) UpdateNet(ctx context.Context, req *dto.UpdateNetRequest, resp
 	before := *existing
 	n := existing
 
-	if req.Name != nil {
-		name := strings.TrimSpace(*req.Name)
-		taken, err := s.repo.NameExistsExcluding(ctx, existing.Section, name, req.ID)
+	// Theater is applied before the name check because the check is per
+	// theater's list: moving a net into a theater where its name is taken is
+	// the same collision as renaming onto one.
+	if req.Theater != nil {
+		theater := strings.TrimSpace(*req.Theater)
+		if !IsValidTheater(theater) {
+			return http.StatusBadRequest, ErrInvalidTheater
+		}
+		n.Theater = theater
+	}
+	if req.Name != nil || req.Theater != nil {
+		name := n.Name
+		if req.Name != nil {
+			name = strings.TrimSpace(*req.Name)
+		}
+		taken, err := s.repo.NameExistsExcluding(ctx, existing.Section, n.Theater, name, req.ID)
 		if err != nil {
 			return http.StatusInternalServerError, ErrNetInternalError
 		}
@@ -271,7 +296,7 @@ func (s *Service) NetsByIDs(ctx context.Context, ids []string) (map[string]contr
 	}
 	out := make(map[string]contracts.NetInfo, len(raw))
 	for id, info := range raw {
-		out[id] = contracts.NetInfo{Section: info.Section, RadioType: info.RadioType}
+		out[id] = contracts.NetInfo{Section: info.Section, RadioType: info.RadioType, Theater: info.Theater}
 	}
 	return out, nil
 }

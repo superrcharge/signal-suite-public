@@ -12,10 +12,15 @@ type Transport struct {
 	Kind        string
 	Provider    string
 	Description string
-	CreatedBy   string
-	UpdatedBy   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// OwnedBy is the ultimate controlling parent of Provider, which is a
+	// different fact from Provider itself: T-Mobile US is owned by Deutsche
+	// Telekom.
+	OwnedBy      string
+	OwnerCountry string
+	CreatedBy    string
+	UpdatedBy    string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // DefaultKinds is the starting vocabulary, not a closed set. A squadron running

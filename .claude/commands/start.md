@@ -2,6 +2,10 @@
 
 Run this at the beginning of every session, before touching any files. All checks run in order. Do not skip any step.
 
+The `SessionStart` hook runs `scripts/start-checks.mjs`, which does the branch, CI, Dependabot, container and migration checks below automatically and puts a one-line `/start:` summary into the session.
+When that line is present and every field has a value, steps 1 to 6 are already answered; act on anything it flags.
+When it is missing, or a field says `unknown`, run those steps by hand.
+
 ---
 
 ## Step 0 - Machine identity

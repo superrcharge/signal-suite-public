@@ -36,4 +36,5 @@ func RegisterRoutes(app *fiber.App, handler *Handler, auth *middleware.AuthMiddl
 	g.Patch("/:id", writer, handler.UpdateEquipment)
 	g.Delete("/:id", writer, handler.DeleteEquipment)
 	g.Post("/:id/photo", writer, handler.UploadPhoto)
+	g.Delete("/:id/photo", writer, handler.DeletePhoto)
 }

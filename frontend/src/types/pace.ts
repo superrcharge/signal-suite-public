@@ -7,6 +7,19 @@ export const PACE_RADIO_LABELS: Record<PaceRadio, string> = {
   mpu5: 'MPU5',
 };
 
+/**
+ * The theaters a card is kept for. A squadron has one whole card per theater,
+ * and a net may serve 'both'. The URL carries 'oconus' and omits the default;
+ * see components/pace/theater.ts.
+ */
+export const PACE_THEATERS = ['conus', 'oconus'] as const;
+export type PaceTheater = (typeof PACE_THEATERS)[number];
+
+export const PACE_THEATER_LABELS: Record<PaceTheater, string> = {
+  conus: 'CONUS',
+  oconus: 'OCONUS',
+};
+
 /** The slice of a net a channel needs in order to render. */
 export interface PaceNetSummary {
   id: string;
@@ -131,6 +144,8 @@ export interface PaceTier {
  */
 export interface PaceCard {
   section: string;
+  /** Which theater's card this is. Every squadron has one per theater. */
+  theater: PaceTheater;
   /** Centred on the sheet; names the exercise or operation. */
   title: string;
   /** YYYY-MM-DD, or empty. Empty means the sheet shows no date subtext -- the

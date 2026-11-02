@@ -27,12 +27,12 @@ func NewRepository(db *pgxpool.Pool) Repository {
 	return &PostgresRepository{db: db}
 }
 
-const selectCols = `id, abbrev, name, description, created_by, updated_by, created_at, updated_at`
+const selectCols = `id, abbrev, name, description, owned_by, owner_country, created_by, updated_by, created_at, updated_at`
 
 func (r *PostgresRepository) scan(row pgx.Row) (*SatcomService, error) {
 	s := &SatcomService{}
 	err := row.Scan(
-		&s.ID, &s.Abbrev, &s.Name, &s.Description,
+		&s.ID, &s.Abbrev, &s.Name, &s.Description, &s.OwnedBy, &s.OwnerCountry,
 		&s.CreatedBy, &s.UpdatedBy, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
@@ -98,10 +98,10 @@ func (r *PostgresRepository) AbbrevExistsExcluding(ctx context.Context, abbrev, 
 // and has no answer for the case where the match fails.
 func (r *PostgresRepository) Create(ctx context.Context, s *SatcomService) error {
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO services (id, abbrev, name, description, created_by, updated_by, created_at, updated_at)
-		 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO services (id, abbrev, name, description, owned_by, owner_country, created_by, updated_by, created_at, updated_at)
+		 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id`,
-		s.Abbrev, s.Name, s.Description,
+		s.Abbrev, s.Name, s.Description, s.OwnedBy, s.OwnerCountry,
 		s.CreatedBy, s.UpdatedBy, s.CreatedAt, s.UpdatedAt,
 	).Scan(&s.ID)
 	return mapUniqueViolation(err)
@@ -109,9 +109,9 @@ func (r *PostgresRepository) Create(ctx context.Context, s *SatcomService) error
 
 func (r *PostgresRepository) Update(ctx context.Context, s *SatcomService) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE services SET abbrev=$1, name=$2, description=$3, updated_by=$4, updated_at=$5
-		 WHERE id=$6`,
-		s.Abbrev, s.Name, s.Description, s.UpdatedBy, s.UpdatedAt, s.ID,
+		`UPDATE services SET abbrev=$1, name=$2, description=$3, owned_by=$4, owner_country=$5, updated_by=$6, updated_at=$7
+		 WHERE id=$8`,
+		s.Abbrev, s.Name, s.Description, s.OwnedBy, s.OwnerCountry, s.UpdatedBy, s.UpdatedAt, s.ID,
 	)
 	return mapUniqueViolation(err)
 }

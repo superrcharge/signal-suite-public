@@ -8,8 +8,8 @@ type KitResponse struct {
 	Type       string    `json:"type"`
 	Status     string    `json:"status"`
 	Black      bool      `json:"black"`
-	Secret      bool      `json:"secret"`
-	TopSecret       bool      `json:"topsecret"`
+	Secret     bool      `json:"secret"`
+	TopSecret  bool      `json:"topsecret"`
 	Section    string    `json:"section"`
 	Owner      *string   `json:"owner,omitempty"`
 	OwnerEmail *string   `json:"owner_email,omitempty"`

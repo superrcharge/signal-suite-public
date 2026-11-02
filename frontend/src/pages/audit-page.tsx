@@ -20,13 +20,11 @@ import {
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import {
-  LoadingSpinner, EmptyState, PageBanner, PageTitle, PageSubtitle,
+  LoadingSpinner, EmptyState,
   ListPagination, PANEL_SX, TABLE_HEAD_SX, TIGHT_CELL_SX, ROW_HOVER_SX,
 } from '@/components/common';
-import { MainLayout } from '@/components/layouts';
 import { useAuditEvents } from '@/services';
 import { ApiClientError } from '@/services/api-client';
-import { useAuth } from '@/contexts/auth-context';
 import type { AuditEvent } from '@/services/audit-service';
 import { EMPTY_VALUE } from '@/utils';
 
@@ -41,8 +39,11 @@ const PAGE_LIMIT = 50;
 // not guesses: note `pace_section` rather than `pace`. A Go test
 // (backend/audit_wiring_test.go) fails if a service emits a type missing from
 // this list, so it cannot drift again.
+// 'all' is a sentinel, never sent to the API. It exists because MUI Select
+// treats '' as "nothing chosen" and hides the option's label, so the default
+// filter was real but invisible.
 const RESOURCE_TYPES = [
-  { value: '',             label: 'All resources' },
+  { value: 'all',          label: 'All resources' },
   { value: 'terminal',     label: 'Terminals' },
   { value: 'kit',          label: 'Kits' },
   { value: 'section',      label: 'Sections' },
@@ -52,13 +53,17 @@ const RESOURCE_TYPES = [
   { value: 'service',      label: 'Services' },
   { value: 'transport',    label: 'Transports' },
   { value: 'platform',     label: 'Platforms' },
+  { value: 'organization', label: 'Organizations' },
+  { value: 'operation',    label: 'Operations' },
+  { value: 'operation_participant', label: 'Operation check-ins' },
+  { value: 'operation_rfi', label: 'Operation RFIs' },
   { value: 'net',          label: 'Nets' },
   { value: 'pace_section', label: 'PACE cards' },
   { value: 'user',         label: 'Users' },
 ];
 
 const ACTIONS = [
-  { value: '',            label: 'All actions' },
+  { value: 'all',         label: 'All actions' },
   { value: 'create',      label: 'Create' },
   { value: 'update',      label: 'Update' },
   { value: 'delete',      label: 'Delete' },
@@ -171,16 +176,26 @@ function ChangesCell({ changes }: { changes: Record<string, unknown> }): ReactNo
   );
 }
 
-export function AuditPage() {
-  const { isAdmin } = useAuth();
+/**
+ * The audit log itself - filters, table, expandable diffs and paging. Its one
+ * home is the Settings page's Audit log tab; `/audit` is now only a redirect
+ * there (routes/router.tsx), so this file renders no page of its own and owns
+ * no page chrome.
+ *
+ * It stays at this path, rather than moving under components/, because
+ * `backend/audit_wiring_test.go` reads `RESOURCE_TYPES` out of this exact
+ * file to hold the filter list to what the services emit. Filter state is
+ * local, never the URL, so it cannot collide with Settings' `?tab=`.
+ */
+export function AuditLog() {
   const [page, setPage] = useState(1);
-  const [resourceType, setResourceType] = useState('');
-  const [action, setAction] = useState('');
+  const [resourceType, setResourceType] = useState('all');
+  const [action, setAction] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data, isLoading, error } = useAuditEvents({
-    resource_type: resourceType || undefined,
-    action: action || undefined,
+    resource_type: resourceType === 'all' ? undefined : resourceType,
+    action: action === 'all' ? undefined : action,
     page,
     limit: PAGE_LIMIT,
   });
@@ -194,31 +209,21 @@ export function AuditPage() {
 
   // Server-side 403 means we're not admin. Show a clean message.
   if (error instanceof ApiClientError && error.code === 'AUTH_FORBIDDEN') {
-    return (
-      <MainLayout>
-        <Alert severity="warning">The audit log is admin-only.</Alert>
-      </MainLayout>
-    );
+    return <Alert severity="warning">The audit log is admin-only.</Alert>;
   }
 
   const errorMessage =
     error instanceof ApiClientError ? error.message : error ? 'Failed to load audit log' : null;
 
   return (
-    <MainLayout>
-      <PageBanner variant="plain" sx={{ mb: 2 }}>
-        <PageTitle sx={{ minWidth: 0 }}>
-          Audit Log
-          <PageSubtitle>
-            Every create, update, delete, and role change. Newest first. Admin-only.
-            {!isAdmin && ' If you are seeing this, your role may have changed recently - reload the page.'}
-          </PageSubtitle>
-        </PageTitle>
-      </PageBanner>
+    <>
       <Paper elevation={0} sx={{ ...PANEL_SX, px: 2, py: 1.5, mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Resource</InputLabel>
+          {/* labelId ties the label to the select, which otherwise had no
+              accessible name: a screen reader announced an unnamed combobox. */}
+          <InputLabel id="audit-filter-resource-label">Resource</InputLabel>
           <Select
+            labelId="audit-filter-resource-label"
             value={resourceType}
             label="Resource"
             onChange={(e) => { setResourceType(e.target.value); setPage(1); }}
@@ -227,8 +232,9 @@ export function AuditPage() {
           </Select>
         </FormControl>
         <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Action</InputLabel>
+          <InputLabel id="audit-filter-action-label">Action</InputLabel>
           <Select
+            labelId="audit-filter-action-label"
             value={action}
             label="Action"
             onChange={(e) => { setAction(e.target.value); setPage(1); }}
@@ -283,7 +289,7 @@ export function AuditPage() {
           />
         </TableContainer>
       )}
-    </MainLayout>
+    </>
   );
 }
 

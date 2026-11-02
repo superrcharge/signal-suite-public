@@ -20,7 +20,14 @@
 export const BANNER_BTN_BASE = {
   height: 30,
   minWidth: 0,
-  px: 1.5,
+  // Symmetric by measurement, not by declaration. `letterSpacing` is added
+  // after every glyph, the last one included, so a plain `px` leaves 0.08em
+  // of empty track inside the right padding and the label reads as sitting
+  // left of centre. The right pad gives that back. The start icon keeps a
+  // zero left margin for the same reason: MUI pulls it 2px toward the border
+  // by default, which made the icon side 2px tighter than the text side.
+  pl: 1.5,
+  pr: 'calc(12px - 0.08em)',
   borderRadius: '4px',
   fontFamily: 'var(--font-mono)',
   fontSize: 11,
@@ -28,7 +35,7 @@ export const BANNER_BTN_BASE = {
   textTransform: 'none',
   lineHeight: 1,
   flexShrink: 0,
-  '& .MuiButton-startIcon': { mr: 0.75, ml: -0.25, '& > *:first-of-type': { fontSize: 15 } },
+  '& .MuiButton-startIcon': { mr: 0.75, ml: 0, '& > *:first-of-type': { fontSize: 15 } },
 } as const;
 
 /**
@@ -102,5 +109,6 @@ export const BANNER_BTN_PAPER_SX = {
 /** A 30px square holding one glyph. Spread an outline preset over it for colour. */
 export const BANNER_ICON_BTN_SX = {
   width: 30,
-  px: 0,
+  pl: 0,
+  pr: 0,
 } as const;

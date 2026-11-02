@@ -61,6 +61,7 @@ vi.mock('@/services', () => ({
   useUpdateSection: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSection: () => ({ mutate: vi.fn(), isPending: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   REASSIGN_TO_NONE: '__none__',
 }));
 
@@ -264,7 +265,7 @@ describe('UsersPage', () => {
     it('describes the rto scope in its stat cell', () => {
       render(<UsersPage />);
 
-      expect(statCell('RTO')).toHaveTextContent('Writes radio + waveforms; reads the rest');
+      expect(statCell('RTO')).toHaveTextContent('Writes radios, waveforms, nets, PACE, transports, platforms, operations, organizations');
     });
   });
 

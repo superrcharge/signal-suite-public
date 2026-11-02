@@ -15,14 +15,14 @@ import { LoadingSpinner, ErrorBoundary } from '@/components/common';
 const DashboardPage = lazy(() =>
   import('@/pages/dashboard-page').then((m) => ({ default: m.DashboardPage }))
 );
+const StatsPage = lazy(() =>
+  import('@/pages/stats-page').then((m) => ({ default: m.StatsPage }))
+);
 const UsersPage = lazy(() =>
   import('@/pages/users-page').then((m) => ({ default: m.UsersPage }))
 );
 const TerminalsPage = lazy(() =>
   import('@/pages/terminals-page').then((m) => ({ default: m.TerminalsPage }))
-);
-const AuditPage = lazy(() =>
-  import('@/pages/audit-page').then((m) => ({ default: m.AuditPage }))
 );
 const SettingsPage = lazy(() =>
   import('@/pages/settings-page').then((m) => ({ default: m.SettingsPage }))
@@ -59,6 +59,18 @@ const PaceIndexPage = lazy(() =>
 );
 const PacePrintPage = lazy(() =>
   import('@/pages/pace-print-page').then((m) => ({ default: m.PacePrintPage }))
+);
+const OperationsPage = lazy(() =>
+  import('@/pages/operations-page').then((m) => ({ default: m.OperationsPage }))
+);
+const OperationPage = lazy(() =>
+  import('@/pages/operation-page').then((m) => ({ default: m.OperationPage }))
+);
+const OperationPrintPage = lazy(() =>
+  import('@/pages/operation-print-page').then((m) => ({ default: m.OperationPrintPage }))
+);
+const OperationMatrixPrintPage = lazy(() =>
+  import('@/pages/operation-matrix-print-page').then((m) => ({ default: m.OperationMatrixPrintPage }))
 );
 const CatalogSheetPage = lazy(() =>
   import('@/pages/catalog-sheet-page').then((m) => ({ default: m.CatalogSheetPage }))
@@ -98,15 +110,16 @@ function SuspenseWrapper({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The front door, which depends on the role: /terminals is hidden from a
- * planner, so sending one there was a redirect into a page with no nav entry.
- * A component rather than a static Navigate, because the destination needs
- * useAuth - AuthProvider sits above RouterProvider in App.tsx.
+ * The front door. homePathFor answers /dashboard for every role today (it used
+ * to send a planner to /terminals, a page with no nav entry for it), but it is
+ * still asked per role, so this stays a component rather than a static
+ * Navigate: the destination needs useAuth, and AuthProvider sits above
+ * RouterProvider in App.tsx.
  */
 function HomeRedirect() {
   const { role, isLoading } = useAuth();
-  // Redirecting mid-load would send every planner to /terminals on a cold load,
-  // since role is null until /users/me answers.
+  // Redirecting mid-load would resolve the destination with a null role, since
+  // role is null until /users/me answers; wait for it.
   if (isLoading) return null;
   return <Navigate to={homePathFor(role)} replace />;
 }
@@ -122,6 +135,16 @@ export const router = createBrowserRouter([
       <SuspenseWrapper>
         <ProtectedRoute>
           <DashboardPage />
+        </ProtectedRoute>
+      </SuspenseWrapper>
+    ),
+  },
+  {
+    path: '/stats',
+    element: (
+      <SuspenseWrapper>
+        <ProtectedRoute>
+          <StatsPage />
         </ProtectedRoute>
       </SuspenseWrapper>
     ),
@@ -192,6 +215,50 @@ export const router = createBrowserRouter([
       <SuspenseWrapper>
         <ProtectedRoute>
           <NetsPrintPage />
+        </ProtectedRoute>
+      </SuspenseWrapper>
+    ),
+  },
+  {
+    path: '/operations',
+    element: (
+      <SuspenseWrapper>
+        <ProtectedRoute>
+          <OperationsPage />
+        </ProtectedRoute>
+      </SuspenseWrapper>
+    ),
+  },
+  // Any literal sub-path added under '/operations/:id' must be declared
+  // ABOVE the bare ':id' entry, or its last segment would match as an id and
+  // render this page for an operation that does not exist. Same rule as
+  // /pace/:section/print and /catalog/:id below.
+  {
+    path: '/operations/:id/print',
+    element: (
+      <SuspenseWrapper>
+        <ProtectedRoute>
+          <OperationPrintPage />
+        </ProtectedRoute>
+      </SuspenseWrapper>
+    ),
+  },
+  {
+    path: '/operations/:id/matrix/print',
+    element: (
+      <SuspenseWrapper>
+        <ProtectedRoute>
+          <OperationMatrixPrintPage />
+        </ProtectedRoute>
+      </SuspenseWrapper>
+    ),
+  },
+  {
+    path: '/operations/:id',
+    element: (
+      <SuspenseWrapper>
+        <ProtectedRoute>
+          <OperationPage />
         </ProtectedRoute>
       </SuspenseWrapper>
     ),
@@ -360,14 +427,11 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    // The audit log's one home is Settings, Audit log. This route stays so
+    // older docs and bookmarks that tell an operator to open
+    // /audit keep working; the Settings page applies the isAdmin gate.
     path: '/audit',
-    element: (
-      <SuspenseWrapper>
-        <ProtectedRoute>
-          <AuditPage />
-        </ProtectedRoute>
-      </SuspenseWrapper>
-    ),
+    element: <Navigate to="/settings?tab=audit" replace />,
   },
   {
     path: '/settings',

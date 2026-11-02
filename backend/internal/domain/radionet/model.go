@@ -57,6 +57,27 @@ func CarriedBy(netRadioType, radio string) bool {
 	return netRadioType == RadioTypeBoth || netRadioType == radio
 }
 
+// Which theater a net serves, the same shape as radio type: TheaterBoth is a
+// real answer, so a net used in both theaters is entered once. Whether a net
+// may sit on a card is contracts.TheaterCarries, which the PACE domain applies.
+const (
+	TheaterCONUS  = "conus"
+	TheaterOCONUS = "oconus"
+	TheaterBoth   = "both"
+)
+
+// ValidTheaters is the closed set accepted by create, update and import.
+var ValidTheaters = []string{TheaterCONUS, TheaterOCONUS, TheaterBoth}
+
+func IsValidTheater(t string) bool {
+	for _, v := range ValidTheaters {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
 // Net is a single entry in the Nets library.
 //
 // TxFreq and RxFreq are freeform strings rather than numerics. A net is recorded
@@ -72,9 +93,11 @@ type Net struct {
 	Name      string
 	NetID     string
 	RadioType string
-	TxFreq    string
-	RxFreq    string
-	FreqUnit  string
+	// conus | oconus | both.
+	Theater  string
+	TxFreq   string
+	RxFreq   string
+	FreqUnit string
 	// Carried over IP rather than RF alone.
 	ROIP        bool
 	Description string

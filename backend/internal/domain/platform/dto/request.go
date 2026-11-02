@@ -3,9 +3,8 @@ package dto
 type CreatePlatformRequest struct {
 	Designation     string   `json:"designation"      validate:"required,min=1,max=60"`
 	PopularName     string   `json:"popular_name"     validate:"omitempty,max=120"`
-	Category        string   `json:"category"`
-	Kind            string   `json:"kind"`
-	Operator        string   `json:"operator"         validate:"omitempty,max=120"`
+	Category        []string `json:"category"         validate:"max=7,dive,max=20"`
+	Type            string   `json:"type"`
 	WaveformAbbrevs []string `json:"waveform_abbrevs" validate:"max=64,dive,max=40"`
 	EquipmentIDs    []string `json:"equipment_ids"    validate:"max=64,dive,max=64"`
 	Notes           string   `json:"notes"            validate:"omitempty,max=1000"`
@@ -21,9 +20,8 @@ type UpdatePlatformRequest struct {
 	ID              string    `json:"-"                validate:"required"`
 	Designation     *string   `json:"designation"      validate:"omitempty,min=1,max=60"`
 	PopularName     *string   `json:"popular_name"     validate:"omitempty,max=120"`
-	Category        *string   `json:"category"`
-	Kind            *string   `json:"kind"`
-	Operator        *string   `json:"operator"         validate:"omitempty,max=120"`
+	Category        *[]string `json:"category"         validate:"omitempty,max=7,dive,max=20"`
+	Type            *string   `json:"type"`
 	WaveformAbbrevs *[]string `json:"waveform_abbrevs" validate:"omitempty,max=64,dive,max=40"`
 	EquipmentIDs    *[]string `json:"equipment_ids"    validate:"omitempty,max=64,dive,max=64"`
 	Notes           *string   `json:"notes"            validate:"omitempty,max=1000"`

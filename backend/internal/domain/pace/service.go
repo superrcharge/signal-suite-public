@@ -46,6 +46,10 @@ func (s *Service) recordAudit(ctx context.Context, in contracts.AuditEventInput)
 // gets an empty scaffold rather than a 404 -- there is no "create plan" step.
 func (s *Service) GetCard(ctx context.Context, req *dto.GetCardRequest, resp *dto.GetCardResponse) (int, error) {
 	section := strings.TrimSpace(req.Section)
+	theater, err := normaliseTheater(req.Theater)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
 
 	exists, err := s.repo.SectionExists(ctx, section)
 	if err != nil {
@@ -55,7 +59,7 @@ func (s *Service) GetCard(ctx context.Context, req *dto.GetCardRequest, resp *dt
 		return http.StatusNotFound, ErrSectionNotFound
 	}
 
-	card, err := s.repo.FindCard(ctx, section)
+	card, err := s.repo.FindCard(ctx, section, theater)
 	if err != nil {
 		return http.StatusInternalServerError, ErrPaceInternalError
 	}
@@ -69,6 +73,10 @@ func (s *Service) GetCard(ctx context.Context, req *dto.GetCardRequest, resp *dt
 // endpoints.
 func (s *Service) SaveCard(ctx context.Context, req *dto.SaveCardRequest, resp *dto.SaveCardResponse) (int, error) {
 	section := strings.TrimSpace(req.Section)
+	theater, err := normaliseTheater(req.Theater)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
 
 	exists, err := s.repo.SectionExists(ctx, section)
 	if err != nil {
@@ -78,7 +86,7 @@ func (s *Service) SaveCard(ctx context.Context, req *dto.SaveCardRequest, resp *
 		return http.StatusNotFound, ErrSectionNotFound
 	}
 
-	before, err := s.repo.FindCard(ctx, section)
+	before, err := s.repo.FindCard(ctx, section, theater)
 	if err != nil {
 		return http.StatusInternalServerError, ErrPaceInternalError
 	}
@@ -90,6 +98,7 @@ func (s *Service) SaveCard(ctx context.Context, req *dto.SaveCardRequest, resp *
 	header := &CardHeader{
 		ID:         uuid.New().String(), // only used when the row is new
 		Section:    section,
+		Theater:    theater,
 		Title:      strings.TrimSpace(req.Title),
 		Version:    strings.TrimSpace(req.Version),
 		Highlights: keepHighlights(HeaderHighlights, req.Highlights),
@@ -143,13 +152,14 @@ func (s *Service) SaveCard(ctx context.Context, req *dto.SaveCardRequest, resp *
 
 	card := &CommsCard{
 		Section: section,
+		Theater: theater,
 		Header:  header,
 		Plans:   []*ChannelPlan{},
 		// The band is a whole-band replace: what the request carries is what
 		// the squadron ends up with, so an omitted array clears its block.
 		LTACRows:   freqRowsFrom(req.LTACRows),
 		TACSATRows: freqRowsFrom(req.TACSATRows),
-		TmnRows: tmnRowsFrom(req.TmnRows),
+		TmnRows:    tmnRowsFrom(req.TmnRows),
 	}
 	// nil, not an empty slice, when the request omitted tiers: the repository
 	// reads nil as "leave the stored tiers alone".
@@ -177,6 +187,7 @@ func (s *Service) SaveCard(ctx context.Context, req *dto.SaveCardRequest, resp *
 		plan := &ChannelPlan{
 			ID:           uuid.New().String(), // only used when the row is new
 			Section:      section,
+			Theater:      theater,
 			RadioType:    radio,
 			Label:        strings.TrimSpace(in.Label),
 			ChannelCount: count,
@@ -223,12 +234,14 @@ func (s *Service) SaveCard(ctx context.Context, req *dto.SaveCardRequest, resp *
 		ActorName:    req.UpdatedBy,
 		ResourceType: "pace_section",
 		ResourceID:   section,
-		ResourceName: section,
+		// The theater rides on the name rather than the id, so the log still
+		// groups by squadron and the entry still says which card moved.
+		ResourceName: section + " " + strings.ToUpper(theater),
 		Action:       "update",
 		Changes:      diffCard(before, card, touched),
 	})
 
-	saved, err := s.repo.FindCard(ctx, section)
+	saved, err := s.repo.FindCard(ctx, section, theater)
 	if err != nil {
 		return http.StatusInternalServerError, ErrPaceInternalError
 	}
@@ -359,9 +372,31 @@ func (s *Service) checkNets(ctx context.Context, card *CommsCard) (int, error) {
 			if net.RadioType != "both" && net.RadioType != p.RadioType {
 				return http.StatusBadRequest, ErrNetWrongRadio
 			}
+			// The same rule again for theater: a CONUS-only net has no place
+			// on the OCONUS card, and the picker not offering it is the UI
+			// half of what this refuses.
+			if !contracts.TheaterCarries(net.Theater, card.Theater) {
+				return http.StatusBadRequest, ErrNetWrongTheater
+			}
 		}
 	}
 	return http.StatusOK, nil
+}
+
+// normaliseTheater reads the theater a request names. Empty is CONUS: the
+// emblem handlers build a GetCardRequest with no theater at all, and every
+// caller that predates theaters sends none, so the default has to live here
+// rather than only in the HTTP handler. A non-empty unknown value is a coded
+// 400, not a silent fall back to CONUS.
+func normaliseTheater(raw string) (string, error) {
+	t := strings.TrimSpace(raw)
+	if t == "" {
+		return TheaterCONUS, nil
+	}
+	if !IsValidTheater(t) {
+		return "", ErrInvalidTheater
+	}
+	return t, nil
 }
 
 // CountAssignmentsForNet and PlansUsingNet satisfy contracts.NetUsage, letting

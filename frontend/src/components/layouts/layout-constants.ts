@@ -7,7 +7,7 @@
  * importing it from `main-layout` would close a cycle between the two. A
  * cyclic import graph is legal and builds clean, and this repo has already
  * shipped one blank white screen because of a cycle in the emitted chunks
- * (an earlier release, see AGENTS.md) - so the constants move to a leaf instead.
+ * (v1.8.2, see AGENTS.md) - so the constants move to a leaf instead.
  *
  * `main-layout.tsx` re-exports `HEADER_HEIGHT` and `CONTENT_GUTTER`, which is
  * where every page already imports them from.

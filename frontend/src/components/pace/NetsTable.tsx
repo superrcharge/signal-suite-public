@@ -6,7 +6,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { IceMark } from '@/components/common';
 import { sheetRootProps } from '@/components/common/sheet-export/sheet-root';
 import { formatNetFrequency } from '@/types/net-format';
-import { NET_RADIO_TYPE_LABELS } from '@/types';
+import { NET_RADIO_TYPE_LABELS, NET_THEATER_LABELS } from '@/types';
 import type { Net } from '@/types';
 import { EMPTY_VALUE } from '@/utils';
 
@@ -18,10 +18,12 @@ import { EMPTY_VALUE } from '@/utils';
  * which is also what a viewer sees on the live page. The container is the
  * sheet root, so share exports exactly this table.
  */
-export function NetsTable({ nets, radioLabel, canWrite, onEdit, onDelete, squareTop = false }: {
+export function NetsTable({ nets, radioLabel, theaterLabel, canWrite, onEdit, onDelete, squareTop = false }: {
   nets: Net[];
   /** "JEM" / "MPU5", for the empty-state sentence. */
   radioLabel: string;
+  /** "CONUS" / "OCONUS", likewise. */
+  theaterLabel: string;
   canWrite: boolean;
   onEdit?: (net: Net) => void;
   onDelete?: (net: Net) => void;
@@ -36,6 +38,7 @@ export function NetsTable({ nets, radioLabel, canWrite, onEdit, onDelete, square
             <TableCell>Name</TableCell>
             <TableCell>Channel #</TableCell>
             <TableCell>Carried by</TableCell>
+            <TableCell>Theater</TableCell>
             <TableCell>Frequency</TableCell>
             <TableCell align="center">ROIP</TableCell>
             {canWrite && <TableCell align="right">Actions</TableCell>}
@@ -44,12 +47,12 @@ export function NetsTable({ nets, radioLabel, canWrite, onEdit, onDelete, square
         <TableBody>
           {nets.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={canWrite ? 6 : 5}>
+              <TableCell colSpan={canWrite ? 7 : 6}>
                 {/* The hint is gated on canWrite: a viewer has no Add Net
                     button in the header, so telling them to press one sends
                     them looking for something that is not there. */}
                 <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                  No {radioLabel} nets yet.
+                  No {theaterLabel} {radioLabel} nets yet.
                   {canWrite && ' Use Add Net at the top of the page.'}
                 </Typography>
               </TableCell>
@@ -61,6 +64,11 @@ export function NetsTable({ nets, radioLabel, canWrite, onEdit, onDelete, square
                 <TableCell>{net.net_id || EMPTY_VALUE}</TableCell>
                 <TableCell>
                   {NET_RADIO_TYPE_LABELS[net.radio_type as keyof typeof NET_RADIO_TYPE_LABELS] ?? net.radio_type}
+                </TableCell>
+                {/* Says which list a net is in, the way Carried by does for
+                    the tabs: a "Both" net shows under either theater. */}
+                <TableCell>
+                  {NET_THEATER_LABELS[net.theater as keyof typeof NET_THEATER_LABELS] ?? net.theater}
                 </TableCell>
                 <TableCell>
                   {formatNetFrequency(net.tx_freq, net.rx_freq, net.freq_unit) || EMPTY_VALUE}

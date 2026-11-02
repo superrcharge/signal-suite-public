@@ -17,7 +17,10 @@ import (
 	"backend/internal/domain/contract"
 	"backend/internal/domain/equipment"
 	"backend/internal/domain/kit"
+	"backend/internal/domain/operation"
+	"backend/internal/domain/organization"
 	"backend/internal/domain/pace"
+	"backend/internal/domain/platform"
 	"backend/internal/domain/radionet"
 	"backend/internal/domain/satcomservice"
 	"backend/internal/domain/section"
@@ -243,6 +246,9 @@ func TestGatesPrecedeHandlers(t *testing.T) {
 	transport.RegisterRoutes(app, nil, mw)
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
+	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
+	operation.RegisterRoutes(app, nil, mw)
 	user.RegisterRoutes(app, nil, mw)
 	audit.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)
@@ -311,6 +317,9 @@ func TestPlannerReachesOnlyItsOwnDomains(t *testing.T) {
 	transport.RegisterRoutes(app, nil, mw)
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
+	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
+	operation.RegisterRoutes(app, nil, mw)
 	user.RegisterRoutes(app, nil, mw)
 	audit.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)
@@ -339,7 +348,13 @@ func TestPlannerReachesOnlyItsOwnDomains(t *testing.T) {
 	// only consumer, and nothing in domain/equipment references transports at
 	// all. A planner who can build the card but not add the path it names is the
 	// gap this list used to encode.
-	plannerPrefixes := []string{"/api/v1/nets", "/api/v1/pace", "/api/v1/transports"}
+	//
+	// Platforms are here for the same reason: they are joint planning reference
+	// data, the input to a PACE across a joint force, and platform/routes.go
+	// gates them to PACE's writer set. Organizations, the participants an
+	// operation checks in, and the operations themselves are gated to the same
+	// set.
+	plannerPrefixes := []string{"/api/v1/nets", "/api/v1/operations", "/api/v1/organizations", "/api/v1/pace", "/api/v1/platforms", "/api/v1/transports"}
 
 	allowed, denied := 0, 0
 	for _, route := range app.GetRoutes(true) {
@@ -389,7 +404,7 @@ func TestPlannerReachesOnlyItsOwnDomains(t *testing.T) {
 // An entry needs a reason, because an unexplained one is a hole in
 // authorization. "Ungated" here means no ROLE gate, not unauthorized.
 var ungatedWrites = map[string]bool{
-	// Both are reads. POST only because a nine-dataset column selection does not
+	// Both are reads. POST only because a ten-dataset column selection does not
 	// fit in a query string next to a Bearer token - see csvbulk.BundleRequest.
 	// Every dataset they reach is behind RequireAuth and nothing more, which
 	// TestExportRoutesAreAuthOnly keeps true.
@@ -423,6 +438,9 @@ func TestEveryWriteRouteIsGated(t *testing.T) {
 	transport.RegisterRoutes(app, nil, mw)
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
+	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
+	operation.RegisterRoutes(app, nil, mw)
 	user.RegisterRoutes(app, nil, mw)
 	audit.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)
@@ -502,6 +520,9 @@ func TestImportTemplatesAreReachableWithoutAuth(t *testing.T) {
 	transport.RegisterRoutes(app, nil, mw)
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
+	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
+	operation.RegisterRoutes(app, nil, mw)
 	user.RegisterRoutes(app, nil, mw)
 	audit.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)
@@ -514,8 +535,10 @@ func TestImportTemplatesAreReachableWithoutAuth(t *testing.T) {
 	}
 
 	// Vacuous-pass guard, matching the other walks in this file.
-	if len(paths) < 7 {
-		t.Fatalf("only %d import-template routes found; expected at least 7 (one per importable domain): %v",
+	// Nine importable domains, plus terminal's legacy /api/v1/import/template,
+	// which is ten template routes.
+	if len(paths) < 9 {
+		t.Fatalf("only %d import-template routes found; expected at least 9 (one per importable domain, plus terminal's legacy path): %v",
 			len(paths), paths)
 	}
 
@@ -572,6 +595,9 @@ func TestExportAndImportRoutesAreGated(t *testing.T) {
 	transport.RegisterRoutes(app, nil, mw)
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
+	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
+	operation.RegisterRoutes(app, nil, mw)
 	user.RegisterRoutes(app, nil, mw)
 	audit.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)
@@ -592,7 +618,7 @@ func TestExportAndImportRoutesAreGated(t *testing.T) {
 		// short count, so nothing failed.
 		match := strings.TrimSuffix(route.Path, "/")
 
-		// The eight import templates are deliberately open - that is what
+		// The nine import templates are deliberately open - that is what
 		// TestImportTemplatesAreReachableWithoutAuth pins. Everything else under
 		// export, import and the two bundles must be gated.
 		if strings.HasSuffix(match, "/import/template") {
@@ -609,10 +635,10 @@ func TestExportAndImportRoutesAreGated(t *testing.T) {
 		targets = append(targets, target{route.Method, route.Path})
 	}
 
-	// Vacuous-pass guard, matching the other walks in this file. Nine exports,
-	// eight imports and the two bundles.
-	if len(targets) < 19 {
-		t.Fatalf("only %d export/import routes found; expected at least 19: %v", len(targets), targets)
+	// Vacuous-pass guard, matching the other walks in this file. Ten exports,
+	// nine imports and the two bundles.
+	if len(targets) < 21 {
+		t.Fatalf("only %d export/import routes found; expected at least 21: %v", len(targets), targets)
 	}
 
 	for _, tgt := range targets {
@@ -641,10 +667,10 @@ func TestExportAndImportRoutesAreGated(t *testing.T) {
 // TestExportRoutesAreAuthOnly fails if any export route gains a RequireRole gate.
 //
 // The bundle endpoint reaches every dataset behind a single RequireAuth. That is
-// exactly equivalent to what a caller could get by issuing nine separate GETs
+// exactly equivalent to what a caller could get by issuing ten separate GETs
 // TODAY, because every export is RequireAuth and nothing more and no Export*
 // method filters rows by caller identity. Both halves of that were checked by
-// reading all nine routes.go and all nine service methods.
+// reading all ten routes.go and all ten service methods.
 //
 // It is a fact with an expiry date. The moment someone adds a role gate to a
 // single export, the bundle silently bypasses it - so this fails first and makes
@@ -662,6 +688,8 @@ func TestExportRoutesAreAuthOnly(t *testing.T) {
 	transport.RegisterRoutes(app, nil, mw)
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
+	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)
 
 	checked := 0
@@ -683,14 +711,14 @@ func TestExportRoutesAreAuthOnly(t *testing.T) {
 		}
 	}
 
-	if checked < 9 {
-		t.Fatalf("only %d export routes found; expected at least 9 (one per domain plus the bundle)", checked)
+	if checked < 11 {
+		t.Fatalf("only %d export routes found; expected at least 11 (one per domain plus the bundle)", checked)
 	}
 }
 
 // TestEveryDataRouteRequiresAuth is the general form of
-// TestExportAndImportRoutesAreGated, which pins only the CSV surface: nine
-// exports, eight imports and the two bundles. The primary read surface - the
+// TestExportAndImportRoutesAreGated, which pins only the CSV surface: ten
+// exports, nine imports and the two bundles. The primary read surface - the
 // list and detail routes every page actually calls - had no 401 assertion
 // anywhere in the backend. Before this test, grepping the whole backend for
 // StatusUnauthorized found hits in one file, and all of them were on CSV paths.
@@ -729,6 +757,9 @@ func TestEveryDataRouteRequiresAuth(t *testing.T) {
 	transport.RegisterRoutes(app, nil, mw)
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
+	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
+	operation.RegisterRoutes(app, nil, mw)
 	user.RegisterRoutes(app, nil, mw)
 	audit.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)
@@ -876,6 +907,84 @@ func TestTransportWritersReachTheHandler(t *testing.T) {
 
 			if resp.StatusCode != tt.wantStatus {
 				t.Errorf("POST /api/v1/transports as %s = %d, want %d", tt.role, resp.StatusCode, tt.wantStatus)
+			}
+			if created != tt.wantCreate {
+				t.Errorf("repository Create called = %v as %s, want %v", created, tt.role, tt.wantCreate)
+			}
+		})
+	}
+}
+
+// TestOrganizationImportWritersReachTheHandler is the transport test above for
+// the organizations import: the gate is lifted out of the registered route, so
+// it is whatever organization/routes.go declares, and a real upload goes
+// through it into the handler for every role. A viewer is refused at the gate
+// and the repository is never reached; the four writers land the row.
+func TestOrganizationImportWritersReachTheHandler(t *testing.T) {
+	probe := fiber.New()
+	organization.RegisterRoutes(probe, nil, enabledMiddleware())
+	var gate fiber.Handler
+	for _, route := range probe.GetRoutes(true) {
+		if route.Method != http.MethodPost || route.Path != "/api/v1/organizations/import" {
+			continue
+		}
+		for _, h := range route.Handlers {
+			if strings.Contains(handlerName(h), "RequireRole") {
+				gate = h
+			}
+		}
+	}
+	if gate == nil {
+		t.Fatal("no RequireRole gate found on POST /api/v1/organizations/import - the route shape changed")
+	}
+
+	tests := []struct {
+		role       string
+		wantStatus int
+		wantCreate bool
+	}{
+		// Import is create under another name, so it admits what create admits:
+		// PACE's writer set.
+		{role: "admin", wantStatus: http.StatusMultiStatus, wantCreate: true},
+		{role: "editor", wantStatus: http.StatusMultiStatus, wantCreate: true},
+		{role: "rto", wantStatus: http.StatusMultiStatus, wantCreate: true},
+		{role: "planner", wantStatus: http.StatusMultiStatus, wantCreate: true},
+		{role: "viewer", wantStatus: http.StatusForbidden, wantCreate: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			created := false
+			repo := &organization.MockRepository{
+				CreateFunc: func(_ context.Context, _ *organization.Organization) error {
+					created = true
+					return nil
+				},
+			}
+			handler := organization.NewHandler(organization.NewService(repo), organization.NewValidator())
+
+			app := fiber.New()
+			app.Post("/api/v1/organizations/import",
+				func(c fiber.Ctx) error {
+					c.Locals(middleware.UserLocalsKey, &stubUser{id: "u-" + tt.role, roles: []string{tt.role}})
+					return c.Next()
+				},
+				gate,
+				handler.ImportOrganizations,
+			)
+
+			body := strings.NewReader(`{"csv":"key,name\ngreen,Green\n"}`)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/organizations/import", body)
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatalf("request: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("POST /api/v1/organizations/import as %s = %d, want %d", tt.role, resp.StatusCode, tt.wantStatus)
 			}
 			if created != tt.wantCreate {
 				t.Errorf("repository Create called = %v as %s, want %v", created, tt.role, tt.wantCreate)

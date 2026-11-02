@@ -139,7 +139,8 @@ func TestCreateTransportStoresTrimmedValues(t *testing.T) {
 
 	resp := &dto.CreateTransportResponse{}
 	status, err := svc.CreateTransport(context.Background(),
-		&dto.CreateTransportRequest{Name: "  Verizon LTE  ", Kind: "cellular", Provider: " Verizon "},
+		&dto.CreateTransportRequest{Name: "  Verizon LTE  ", Kind: "cellular", Provider: " Verizon ",
+			OwnedBy: " Verizon Communications ", OwnerCountry: " United States "},
 		resp)
 
 	if status != http.StatusCreated || err != nil {
@@ -150,6 +151,9 @@ func TestCreateTransportStoresTrimmedValues(t *testing.T) {
 	}
 	if created.Name != "Verizon LTE" || created.Provider != "Verizon" {
 		t.Errorf("stored %+v; want trimmed name and provider", created)
+	}
+	if created.OwnedBy != "Verizon Communications" || created.OwnerCountry != "United States" {
+		t.Errorf("stored %+v; want trimmed owner and country", created)
 	}
 	if resp.Transport.ID != "new" {
 		t.Errorf("response ID = %q, want the re-fetched ID", resp.Transport.ID)
@@ -228,6 +232,7 @@ func TestCreateTransportRejectsDuplicateName(t *testing.T) {
 func TestUpdateTransportAppliesOnlyTheFieldsSent(t *testing.T) {
 	existing := &Transport{
 		ID: "1", Name: "Old name", Kind: "fiber", Provider: "Acme", Description: "keep me",
+		OwnedBy: "Acme Holdings", OwnerCountry: "Canada",
 		CreatedAt: time.Now().UTC(),
 	}
 	var updated *Transport
@@ -253,6 +258,9 @@ func TestUpdateTransportAppliesOnlyTheFieldsSent(t *testing.T) {
 	}
 	if updated.Description != "keep me" {
 		t.Errorf("description = %q; an omitted field must not be cleared", updated.Description)
+	}
+	if updated.OwnedBy != "Acme Holdings" || updated.OwnerCountry != "Canada" {
+		t.Errorf("owner = %q/%q; omitted fields must not be cleared", updated.OwnedBy, updated.OwnerCountry)
 	}
 	if updated.UpdatedBy != "mike" {
 		t.Errorf("updated_by = %q, want %q", updated.UpdatedBy, "mike")
@@ -312,5 +320,24 @@ func TestDeleteTransportIsNotFoundWhenAbsent(t *testing.T) {
 
 	if status != http.StatusNotFound || !errors.Is(err, ErrTransportNotFound) {
 		t.Errorf("status = %d, err = %v; want 404 / %v", status, err, ErrTransportNotFound)
+	}
+}
+
+// Ownership is the kind of fact a reviewer asks "who changed that?" about, so
+// an edit to it must reach the audit diff, and an untouched owner must not.
+func TestDiffTransportReportsOwnership(t *testing.T) {
+	before := &Transport{Name: "T-Mobile US Cellular", OwnedBy: "SoftBank", OwnerCountry: "Japan"}
+	after := *before
+	after.OwnedBy = "Deutsche Telekom"
+	after.OwnerCountry = "Germany"
+
+	changes := diffTransport(before, &after)
+	for _, field := range []string{"owned_by", "owner_country"} {
+		if _, ok := changes[field]; !ok {
+			t.Errorf("diff missing %s: %+v", field, changes)
+		}
+	}
+	if _, ok := changes["name"]; ok {
+		t.Errorf("diff reports name, which did not change: %+v", changes)
 	}
 }

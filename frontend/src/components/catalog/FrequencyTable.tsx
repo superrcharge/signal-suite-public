@@ -1,9 +1,16 @@
 import type { ReactNode } from 'react';
 import type { EquipmentBand, TerminalType } from '@/types';
 import { EMPTY_VALUE } from '@/utils';
+import { RADIO_BAND_OPTS, SATCOM_BAND_OPTS } from './catalog-vocab';
 
-const SATCOM_BANDS = ['S', 'C', 'X', 'Ku', 'K', 'Ka'];
-const RADIO_BANDS  = ['HF', 'VHF', 'UHF', 'L'];
+// The editor's band options, in frequency order for the sheet. Taken from
+// catalog-vocab rather than restated: the radio list here once stopped at L,
+// so an S- or C-band radio module saved in the editor never reached the sheet.
+const FREQUENCY_ORDER = ['HF', 'VHF', 'UHF', 'L', 'S', 'C', 'X', 'Ku', 'K', 'Ka'];
+const byFrequency = (opts: string[]) =>
+  [...opts].sort((a, b) => FREQUENCY_ORDER.indexOf(a) - FREQUENCY_ORDER.indexOf(b));
+const SATCOM_BANDS = byFrequency(SATCOM_BAND_OPTS);
+const RADIO_BANDS  = byFrequency(RADIO_BAND_OPTS);
 
 function naCell(): ReactNode {
   return (
@@ -95,9 +102,17 @@ interface FrequencyTableProps {
 export function FrequencyTable({ bands = [], terminalType = 'satcom' }: FrequencyTableProps) {
   const canonical = terminalType === 'radio' ? RADIO_BANDS : SATCOM_BANDS;
   const isSatcom = terminalType !== 'radio';
-  const byBand: Record<string, EquipmentBand> = {};
-  bands.forEach(b => { byBand[b.band] = b; });
-  const rows = canonical.map(name => byBand[name] ?? { band: name });
+  // One row per saved entry, in frequency order, so a radio with two S-band
+  // modules shows both and a band it does not have takes no space on a
+  // one-page sheet. A record with no bands at all keeps the full N/A list,
+  // which says "not filled in" rather than "nothing". An entry naming a band
+  // outside the list is kept, last, rather than dropped.
+  const rows: Partial<EquipmentBand>[] = bands.length
+    ? [
+        ...canonical.flatMap(name => bands.filter(b => b.band === name)),
+        ...bands.filter(b => !canonical.includes(b.band)),
+      ]
+    : canonical.map(name => ({ band: name }));
 
   const columns: ColDef[] = isSatcom
     ? [

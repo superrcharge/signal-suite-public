@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Machine identity report for session start.
 //
-// This repo may be worked on from more than one machine. Every path here is
+// This repo is worked on from both Windows and macOS. Every path here is
 // derived at runtime, never hardcoded - see .claude/commands/ship.md, and
-// An earlier pull request, where hardcoded absolute paths made /start and /ship report green
+// PR #106, where hardcoded absolute paths made /start and /ship report green
 // while inspecting nothing.
 //
 // Rules this file follows, in order of importance:
@@ -101,9 +101,8 @@ lines.push(
   `container:     ${runtimes.length ? runtimes.join(' / ') : 'MISSING (no podman or docker on PATH)'}`,
 )
 
-// The account matters more than the binary: AGENTS.md flags that the wrong gh
-// account silently hits the wrong repo, and the gate AGENTS.md names is
-// currently Windows-only. This line is the cross-platform stand-in.
+// The account matters more than the binary: gh keeps one active account
+// machine-wide, so this line prints it to be read rather than assumed.
 lines.push('')
 lines.push('=== GitHub ===')
 if (typeof ghAccount === 'string') {

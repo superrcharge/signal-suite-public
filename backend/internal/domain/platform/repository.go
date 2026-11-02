@@ -27,12 +27,12 @@ func NewRepository(db *pgxpool.Pool) Repository {
 	return &PostgresRepository{db: db}
 }
 
-const selectCols = `id, designation, popular_name, category, kind, operator, waveform_abbrevs, equipment_ids, notes, created_by, updated_by, created_at, updated_at`
+const selectCols = `id, designation, popular_name, category, type, waveform_abbrevs, equipment_ids, notes, created_by, updated_by, created_at, updated_at`
 
 func (r *PostgresRepository) scan(row pgx.Row) (*Platform, error) {
 	p := &Platform{}
 	err := row.Scan(
-		&p.ID, &p.Designation, &p.PopularName, &p.Category, &p.Kind, &p.Operator,
+		&p.ID, &p.Designation, &p.PopularName, &p.Category, &p.Type,
 		&p.WaveformAbbrevs, &p.EquipmentIDs, &p.Notes,
 		&p.CreatedBy, &p.UpdatedBy, &p.CreatedAt, &p.UpdatedAt,
 	)
@@ -104,9 +104,9 @@ func nonNil(s []string) []string {
 
 func (r *PostgresRepository) Create(ctx context.Context, p *Platform) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO platforms (id, designation, popular_name, category, kind, operator, waveform_abbrevs, equipment_ids, notes, created_by, updated_by, created_at, updated_at)
-		 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		p.Designation, p.PopularName, p.Category, p.Kind, p.Operator,
+		`INSERT INTO platforms (id, designation, popular_name, category, type, waveform_abbrevs, equipment_ids, notes, created_by, updated_by, created_at, updated_at)
+		 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		p.Designation, p.PopularName, nonNil(p.Category), p.Type,
 		nonNil(p.WaveformAbbrevs), nonNil(p.EquipmentIDs), p.Notes,
 		p.CreatedBy, p.UpdatedBy, p.CreatedAt, p.UpdatedAt,
 	)
@@ -115,10 +115,10 @@ func (r *PostgresRepository) Create(ctx context.Context, p *Platform) error {
 
 func (r *PostgresRepository) Update(ctx context.Context, p *Platform) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE platforms SET designation=$1, popular_name=$2, category=$3, kind=$4, operator=$5,
-		        waveform_abbrevs=$6, equipment_ids=$7, notes=$8, updated_by=$9, updated_at=$10
-		 WHERE id=$11`,
-		p.Designation, p.PopularName, p.Category, p.Kind, p.Operator,
+		`UPDATE platforms SET designation=$1, popular_name=$2, category=$3, type=$4,
+		        waveform_abbrevs=$5, equipment_ids=$6, notes=$7, updated_by=$8, updated_at=$9
+		 WHERE id=$10`,
+		p.Designation, p.PopularName, nonNil(p.Category), p.Type,
 		nonNil(p.WaveformAbbrevs), nonNil(p.EquipmentIDs), p.Notes,
 		p.UpdatedBy, p.UpdatedAt, p.ID,
 	)

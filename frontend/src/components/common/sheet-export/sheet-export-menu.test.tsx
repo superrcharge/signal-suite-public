@@ -98,3 +98,80 @@ describe('SheetExportMenu', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The sheet is not ready yet');
   });
 });
+
+describe('SheetExportMenu with a deck', () => {
+  const never = () => new Promise<never>(() => undefined);
+
+  it('keeps the same three items, and only the .pptx caption says it is the whole deck', async () => {
+    stubClipboard(true);
+    const user = userEvent.setup();
+    renderWithRoute(<SheetExportMenu spec={spec} deck={{ hint: 'One slide per phase, drawn as shown', run: never }} />, '/operations/op-1');
+    await open(user);
+
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'Download .pptxOne slide per phase, drawn as shown',
+      'Copy imagePaste straight onto a slide',
+      'Download .pngFor documents and other apps',
+    ]);
+  });
+
+  it('runs the deck, not the sheet on screen, for the .pptx item', async () => {
+    stubClipboard(true);
+    const user = userEvent.setup();
+    const run = vi.fn(() => Promise.resolve({ ok: true }));
+    const onScreen = vi.fn(spec);
+    renderWithRoute(<SheetExportMenu spec={onScreen} deck={{ hint: 'h', run }} />, '/operations/op-1');
+    await open(user);
+    await user.click(screen.getByRole('menuitem', { name: /^Download \.pptx/ }));
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(onScreen).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('PowerPoint file downloaded.');
+  });
+
+  it('shows which slide it is on, and is disabled until the build ends', async () => {
+    stubClipboard(true);
+    const user = userEvent.setup();
+    let finish: (r: { ok: boolean }) => void = () => undefined;
+    const run = vi.fn((progress: (n: number, of: number) => void) => {
+      progress(3, 4);
+      return new Promise<{ ok: boolean }>((resolve) => { finish = resolve; });
+    });
+    renderWithRoute(<SheetExportMenu spec={spec} deck={{ hint: 'h', run }} />, '/operations/op-1');
+    await open(user);
+    await user.click(screen.getByRole('menuitem', { name: /^Download \.pptx/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Building slide 3 of 4…');
+    expect(screen.getByRole('button', { name: 'share this sheet' })).toBeDisabled();
+    // The progress line has no close button: it is not something to dismiss mid-build.
+    expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
+
+    finish({ ok: true });
+    expect(await screen.findByText('PowerPoint file downloaded.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'share this sheet' })).toBeEnabled();
+  });
+
+  it('surfaces a failed deck through the same error path as a failed slide', async () => {
+    stubClipboard(true);
+    const user = userEvent.setup();
+    renderWithRoute(
+      <SheetExportMenu spec={spec} deck={{ hint: 'h', run: () => Promise.resolve({ ok: false, error: 'Could not lay out Infil.' }) }} />,
+      '/operations/op-1',
+    );
+    await open(user);
+    await user.click(screen.getByRole('menuitem', { name: /^Download \.pptx/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not lay out Infil.');
+  });
+
+  it('leaves Copy image and Download .png on the sheet on screen', async () => {
+    stubClipboard(true);
+    const user = userEvent.setup();
+    const onScreen = vi.fn(() => null);
+    renderWithRoute(<SheetExportMenu spec={onScreen} deck={{ hint: 'h', run: never }} />, '/operations/op-1');
+    await open(user);
+    await user.click(screen.getByRole('menuitem', { name: /^Download \.png/ }));
+
+    expect(onScreen).toHaveBeenCalledTimes(1);
+  });
+});

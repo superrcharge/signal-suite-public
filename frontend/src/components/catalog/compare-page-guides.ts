@@ -81,11 +81,14 @@ export interface ColumnPagination {
  * exactly, which both puts every seam on a column edge and leaves no gutter
  * of dead paper at the right margin.
  */
-export function paginateColumns(count: number, labelCol = LABEL_COL, pageW = PAGE_W): ColumnPagination {
+export function paginateColumns(count: number, labelCol = LABEL_COL, pageW = PAGE_W, minCol = MIN_COL): ColumnPagination {
   // `pageW` is the page as laid out, which under Fit is PAGE_W / zoom: a
-  // zoomed-down sheet is laid out wider and so holds more columns.
+  // zoomed-down sheet is laid out wider and so holds more columns. `minCol`
+  // defaults to the compare sheet's; the joint matrix passes its own
+  // narrower one, since a column of checks needs less room than a column of
+  // datasheet values.
   const usable = pageW - labelCol;
-  const perPage = Math.max(1, Math.floor(usable / MIN_COL));
+  const perPage = Math.max(1, Math.floor(usable / minCol));
   return { perPage, colW: usable / perPage, paged: count > perPage };
 }
 

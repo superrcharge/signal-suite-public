@@ -11,7 +11,6 @@ export { FrequencyTable } from './FrequencyTable';
 export { CompatibilityMatrix } from './CompatibilityMatrix';
 export { HeroBlock } from './HeroBlock';
 export { BrowseGrid } from './BrowseGrid';
-export { PhotoCropModal } from './PhotoCropModal';
 export { EquipmentPhoto } from './EquipmentPhoto';
 export { CompareMatrix, CellValue } from './CompareMatrix';
 export { CompareSheet } from './CompareSheet';

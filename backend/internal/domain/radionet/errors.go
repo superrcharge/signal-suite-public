@@ -55,6 +55,11 @@ var (
 		Message: "radio type must be jem, mpu5, or both",
 		Status:  http.StatusBadRequest,
 	}
+	ErrInvalidTheater = &Error{
+		Code:    "NET_INVALID_THEATER",
+		Message: "theater must be conus, oconus, or both",
+		Status:  http.StatusBadRequest,
+	}
 	ErrNetInternalError = &Error{
 		Code:    "NET_INTERNAL_ERROR",
 		Message: "internal server error",

@@ -34,6 +34,27 @@ func IsValidRadio(r string) bool {
 	return false
 }
 
+// The theaters a card can be for. A squadron keeps one whole card per theater:
+// header, both wheels, band rows and tiers. A net may declare itself for
+// "both", but a card is always for one specific theater, the same shape as
+// radio above.
+const (
+	TheaterCONUS  = "conus"
+	TheaterOCONUS = "oconus"
+)
+
+// ValidTheaters is the closed set, in the order the CSV export walks them.
+var ValidTheaters = []string{TheaterCONUS, TheaterOCONUS}
+
+func IsValidTheater(t string) bool {
+	for _, v := range ValidTheaters {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
 // DefaultChannelCount is the position count a new plan starts with.
 const DefaultChannelCount = 16
 
@@ -52,7 +73,7 @@ var (
 	PlanHighlights    = []string{"label"}
 	ChannelHighlights = []string{"net", "tx", "rx"}
 	FreqRowHighlights = []string{"name", "channel", "up", "down", "sat", "crypto"}
-	TmnHighlights  = []string{"label", "value"}
+	TmnHighlights     = []string{"label", "value"}
 	TierHighlights    = []string{"name", "service", "detail"}
 )
 
@@ -60,6 +81,7 @@ var (
 type ChannelPlan struct {
 	ID           string
 	Section      string
+	Theater      string
 	RadioType    string
 	Label        string
 	ChannelCount int
@@ -157,6 +179,7 @@ func (a *ChannelAssignment) IsOverridden() bool {
 type CardHeader struct {
 	ID            string
 	Section       string
+	Theater       string
 	Title         string
 	EffectiveDate *time.Time
 	// EmblemURL is the squadron's emblem, drawn in both wheel hubs. Empty means
@@ -271,11 +294,12 @@ type Tier struct {
 // the unit of work in this domain -- one read, one save.
 type CommsCard struct {
 	Section    string
+	Theater    string
 	Header     *CardHeader
 	Plans      []*ChannelPlan
 	LTACRows   []*FreqRow
 	TACSATRows []*FreqRow
-	TmnRows []*TmnRow
+	TmnRows    []*TmnRow
 	Tiers      []*Tier
 }
 

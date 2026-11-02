@@ -30,7 +30,7 @@ var csvTable = csvtable.Table[Terminal]{
 	// names must not collide with seed data; see domains/terminal.md.
 	Preamble: []string{
 		"REQUIRED: name (case-insensitive unique). Everything else is optional.",
-		"Delete every # line and the EXAMPLE rows. Keep the header row below.",
+		"Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.",
 	},
 
 	Columns: []csvtable.Column[Terminal]{

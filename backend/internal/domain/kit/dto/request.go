@@ -5,8 +5,8 @@ type CreateKitRequest struct {
 	Type       string  `json:"type"        validate:"required,oneof=remote ifk atk"`
 	Status     string  `json:"status"      validate:"omitempty,oneof=available alert alert-blue alert-green on-mission reserved inop"`
 	Black      bool    `json:"black"`
-	Secret      bool    `json:"secret"`
-	TopSecret       bool    `json:"topsecret"`
+	Secret     bool    `json:"secret"`
+	TopSecret  bool    `json:"topsecret"`
 	Section    string  `json:"section"`
 	Owner      *string `json:"owner"`
 	OwnerEmail *string `json:"owner_email"`
@@ -35,8 +35,8 @@ type UpdateKitRequest struct {
 	Type       *string `json:"type"        validate:"omitempty,oneof=remote ifk atk"`
 	Status     *string `json:"status"      validate:"omitempty,oneof=available alert alert-blue alert-green on-mission reserved inop"`
 	Black      *bool   `json:"black"`
-	Secret      *bool   `json:"secret"`
-	TopSecret       *bool   `json:"topsecret"`
+	Secret     *bool   `json:"secret"`
+	TopSecret  *bool   `json:"topsecret"`
 	Section    *string `json:"section"`
 	Owner      *string `json:"owner"`
 	OwnerEmail *string `json:"owner_email"`

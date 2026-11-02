@@ -2,7 +2,6 @@ package pace
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -59,7 +58,7 @@ func currentUserID(c fiber.Ctx) string {
 }
 
 func (h *Handler) GetCard(c fiber.Ctx) error {
-	req := &dto.GetCardRequest{Section: c.Params("section")}
+	req := &dto.GetCardRequest{Section: c.Params("section"), Theater: c.Query("theater", TheaterCONUS)}
 	if err := h.validator.Validate(req); err != nil {
 		return c.Status(response.StatusFromError(err)).JSON(response.Err(err))
 	}
@@ -78,6 +77,7 @@ func (h *Handler) SaveCard(c fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(response.Err(err))
 	}
 	req.Section = c.Params("section")
+	req.Theater = c.Query("theater", TheaterCONUS)
 	req.UpdatedBy = currentUserName(c)
 	req.ActorID = currentUserID(c)
 
@@ -114,7 +114,7 @@ var allowedEmblemTypes = map[string]string{
 // from storage by the browser.
 func (h *Handler) GetEmblem(c fiber.Ctx) error {
 	if h.blob == nil {
-		return c.Status(http.StatusNotImplemented).JSON(response.Err(errors.New("blob storage not configured")))
+		return c.Status(ErrEmblemStorageNotConfigured.Status).JSON(response.Err(ErrEmblemStorageNotConfigured))
 	}
 
 	section := c.Params("section")
@@ -128,7 +128,7 @@ func (h *Handler) GetEmblem(c fiber.Ctx) error {
 	if stored == "" {
 		// Not an error worth logging: a squadron with no emblem is the normal
 		// case, and the sheet draws its generated placeholder instead.
-		return c.Status(http.StatusNotFound).JSON(response.Err(errors.New("no emblem for this squadron")))
+		return c.Status(ErrNoEmblem.Status).JSON(response.Err(ErrNoEmblem))
 	}
 
 	blobName, err := h.blob.BlobNameFromURL(stored)
@@ -138,11 +138,13 @@ func (h *Handler) GetEmblem(c fiber.Ctx) error {
 
 	reader, contentType, err := h.blob.Download(c.Context(), blobName)
 	if err != nil {
+		log.Printf("error: pace %s: emblem download: %v", section, err)
 		return c.Status(http.StatusInternalServerError).JSON(response.Err(err))
 	}
 	data, err := io.ReadAll(reader)
 	_ = reader.Close()
 	if err != nil {
+		log.Printf("error: pace %s: emblem read: %v", section, err)
 		return c.Status(http.StatusInternalServerError).JSON(response.Err(err))
 	}
 
@@ -160,14 +162,14 @@ func (h *Handler) GetEmblem(c fiber.Ctx) error {
 // draft never carries it.
 func (h *Handler) UploadEmblem(c fiber.Ctx) error {
 	if h.blob == nil {
-		return c.Status(http.StatusNotImplemented).JSON(response.Err(errors.New("blob storage not configured")))
+		return c.Status(ErrEmblemStorageNotConfigured.Status).JSON(response.Err(ErrEmblemStorageNotConfigured))
 	}
 
 	section := c.Params("section")
 
 	fh, err := c.FormFile("emblem")
 	if err != nil {
-		return c.Status(http.StatusBadRequest).JSON(response.Err(errors.New("field 'emblem' required")))
+		return c.Status(ErrEmblemFieldRequired.Status).JSON(response.Err(ErrEmblemFieldRequired))
 	}
 
 	ct := fh.Header.Get("Content-Type")
@@ -183,7 +185,7 @@ func (h *Handler) UploadEmblem(c fiber.Ctx) error {
 		case ".webp":
 			ct = "image/webp"
 		default:
-			return c.Status(http.StatusBadRequest).JSON(response.Err(errors.New("unsupported image type; use JPEG, PNG, or WebP")))
+			return c.Status(ErrEmblemUnsupportedType.Status).JSON(response.Err(ErrEmblemUnsupportedType))
 		}
 	}
 
@@ -198,6 +200,7 @@ func (h *Handler) UploadEmblem(c fiber.Ctx) error {
 	blobName := fmt.Sprintf("pace/%s/%s%s", section, uuid.New().String(), ext)
 	url, err := h.blob.UploadStream(c.Context(), blobName, ct, f)
 	if err != nil {
+		log.Printf("error: pace %s: emblem upload: %v", section, err)
 		return c.Status(http.StatusInternalServerError).JSON(response.Err(err))
 	}
 
@@ -218,7 +221,7 @@ func (h *Handler) UploadEmblem(c fiber.Ctx) error {
 // would strand the object permanently.
 func (h *Handler) DeleteEmblem(c fiber.Ctx) error {
 	if h.blob == nil {
-		return c.Status(http.StatusNotImplemented).JSON(response.Err(errors.New("blob storage not configured")))
+		return c.Status(ErrEmblemStorageNotConfigured.Status).JSON(response.Err(ErrEmblemStorageNotConfigured))
 	}
 
 	section := c.Params("section")

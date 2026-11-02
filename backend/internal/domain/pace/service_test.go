@@ -88,7 +88,7 @@ func TestGetCard(t *testing.T) {
 
 	t.Run("resolves an override over the net's own frequency", func(t *testing.T) {
 		repo := &MockRepository{
-			FindCardFunc: func(_ context.Context, section string) (*CommsCard, error) {
+			FindCardFunc: func(_ context.Context, section, _ string) (*CommsCard, error) {
 				return &CommsCard{Section: section, Plans: []*ChannelPlan{{
 					RadioType:    RadioJEM,
 					ChannelCount: 16,
@@ -126,11 +126,11 @@ func TestGetCard(t *testing.T) {
 func TestSaveCard(t *testing.T) {
 	// All owned by asqd, the section saveReq targets.
 	nets := &mockNetLookup{nets: map[string]contracts.NetInfo{
-		"jemNet":    {Section: "asqd", RadioType: "jem"},
-		"mpu5Net":   {Section: "asqd", RadioType: "mpu5"},
-		"sharedNet": {Section: "asqd", RadioType: "both"},
+		"jemNet":    {Section: "asqd", RadioType: "jem", Theater: "conus"},
+		"mpu5Net":   {Section: "asqd", RadioType: "mpu5", Theater: "conus"},
+		"sharedNet": {Section: "asqd", RadioType: "both", Theater: "conus"},
 		// Another squadron's net, which this card must not be able to use.
-		"otherNet": {Section: "bsqd", RadioType: "jem"},
+		"otherNet": {Section: "bsqd", RadioType: "jem", Theater: "conus"},
 	}}
 
 	t.Run("saves a channel and records an audit diff", func(t *testing.T) {
@@ -308,12 +308,12 @@ func TestSaveCard(t *testing.T) {
 // write, so reporting it would record a wheel being emptied that nobody touched.
 func TestSaveCardAuditDiffCoversOnlyTheRadiosSent(t *testing.T) {
 	nets := &mockNetLookup{nets: map[string]contracts.NetInfo{
-		"jemNet": {Section: "asqd", RadioType: "jem"},
+		"jemNet": {Section: "asqd", RadioType: "jem", Theater: "conus"},
 	}}
 
 	// Both wheels already carry channels, which is the state a partial save has
 	// to leave the untouched one in.
-	populated := func(_ context.Context, section string) (*CommsCard, error) {
+	populated := func(_ context.Context, section, _ string) (*CommsCard, error) {
 		return &CommsCard{Section: section, Plans: []*ChannelPlan{
 			{
 				RadioType: RadioJEM, Label: "JEM WHEEL", ChannelCount: 16,
@@ -554,7 +554,7 @@ func TestEmblem(t *testing.T) {
 
 	t.Run("a stored emblem reaches the card response", func(t *testing.T) {
 		repo := &MockRepository{
-			FindCardFunc: func(_ context.Context, section string) (*CommsCard, error) {
+			FindCardFunc: func(_ context.Context, section, _ string) (*CommsCard, error) {
 				return &CommsCard{
 					Section: section,
 					Header:  &CardHeader{Section: section, EmblemURL: "https://blob/pace/asqd/e.png"},
@@ -592,7 +592,7 @@ func TestSheetRows(t *testing.T) {
 		// inserts; what the service has to get right is passing exactly the
 		// submitted list, so three stored rows really do become one.
 		repo := &MockRepository{
-			FindCardFunc: func(_ context.Context, section string) (*CommsCard, error) {
+			FindCardFunc: func(_ context.Context, section, _ string) (*CommsCard, error) {
 				return &CommsCard{
 					Section: section,
 					Header:  &CardHeader{Section: section},
@@ -682,13 +682,13 @@ func TestSheetRows(t *testing.T) {
 
 	t.Run("carries the stored rows through to the card response", func(t *testing.T) {
 		repo := &MockRepository{
-			FindCardFunc: func(_ context.Context, section string) (*CommsCard, error) {
+			FindCardFunc: func(_ context.Context, section, _ string) (*CommsCard, error) {
 				return &CommsCard{
-					Section:    section,
-					Header:     &CardHeader{Section: section},
-					Plans:      []*ChannelPlan{},
-					LTACRows:   []*FreqRow{{Name: "ALPHA NET", Up: "225.000", Down: "243.000"}},
-					TmnRows: []*TmnRow{{Label: "DATA SYNC", Value: "ON"}},
+					Section:  section,
+					Header:   &CardHeader{Section: section},
+					Plans:    []*ChannelPlan{},
+					LTACRows: []*FreqRow{{Name: "ALPHA NET", Up: "225.000", Down: "243.000"}},
+					TmnRows:  []*TmnRow{{Label: "DATA SYNC", Value: "ON"}},
 				}, nil
 			},
 		}
@@ -716,7 +716,7 @@ func TestTiers(t *testing.T) {
 		// no longer names. Cleared on write rather than on read, so the stale
 		// reference cannot resurface if the tier is switched back.
 		repo := &MockRepository{
-			FindCardFunc: func(_ context.Context, section string) (*CommsCard, error) {
+			FindCardFunc: func(_ context.Context, section, _ string) (*CommsCard, error) {
 				return &CommsCard{
 					Section: section,
 					Header:  &CardHeader{Section: section},
@@ -970,7 +970,7 @@ func TestHighlights(t *testing.T) {
 
 	t.Run("marks read back as arrays, never null", func(t *testing.T) {
 		repo := &MockRepository{
-			FindCardFunc: func(_ context.Context, section string) (*CommsCard, error) {
+			FindCardFunc: func(_ context.Context, section, _ string) (*CommsCard, error) {
 				return &CommsCard{
 					Section: section,
 					Header:  &CardHeader{Section: section, Version: "v3"},
@@ -978,9 +978,9 @@ func TestHighlights(t *testing.T) {
 						RadioType: RadioJEM, ChannelCount: 16,
 						Assignments: []*ChannelAssignment{{ChannelNumber: 1, NetID: "n1", Net: &NetRef{ID: "n1"}}},
 					}},
-					LTACRows:   []*FreqRow{{Name: "ALPHA", Highlights: []string{"down"}}},
-					TmnRows: []*TmnRow{{Label: "ATAK"}},
-					Tiers:      []*Tier{{Letter: "P", Source: TierSourceNone}},
+					LTACRows: []*FreqRow{{Name: "ALPHA", Highlights: []string{"down"}}},
+					TmnRows:  []*TmnRow{{Label: "ATAK"}},
+					Tiers:    []*Tier{{Letter: "P", Source: TierSourceNone}},
 				}, nil
 			},
 		}

@@ -1,5 +1,29 @@
 import { QueryClient } from '@tanstack/react-query';
 import { ApiClientError } from './api-client';
+import type { PaceTheater } from '@/types';
+
+// A 4xx answers the same way however often it is asked, so retrying one only
+// delays the error the user is waiting for - three backoffs (2s, 4s, 8s) put
+// fourteen seconds of blank page in front of "not found". The two exceptions are the
+// statuses that do say "try again": 408 Request Timeout and 429 Too Many
+// Requests, which the backend's rate limiter sends.
+//
+// This used to test `error.code` against NOT_FOUND, UNAUTHORIZED, FORBIDDEN and
+// VALIDATION_ERROR. The backend names codes per domain (EQUIPMENT_NOT_FOUND,
+// AUTH_FORBIDDEN, USER_FORBIDDEN), so three of the four never matched and every
+// 401, 403 and 404 was retried three times. The status is what the codes were
+// standing in for. A 401 has already been retried once with a forced token
+// refresh by `apiFetch`, so a second round here buys nothing either.
+const RETRYABLE_CLIENT_STATUSES = new Set([408, 429]);
+const MAX_QUERY_RETRIES = 3;
+
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiClientError && error.status !== undefined) {
+    const isClientError = error.status >= 400 && error.status < 500;
+    if (isClientError && !RETRYABLE_CLIENT_STATUSES.has(error.status)) return false;
+  }
+  return failureCount < MAX_QUERY_RETRIES;
+}
 
 /**
  * Global query client configuration
@@ -13,22 +37,7 @@ export const queryClient = new QueryClient({
       // Cache time: how long data stays in cache when unused (30 minutes)
       gcTime: 30 * 60 * 1000,
 
-      // Retry logic
-      retry: (failureCount, error) => {
-        // Don't retry on 4xx errors (client errors)
-        if (error instanceof ApiClientError) {
-          const is4xxError =
-            error.code === 'NOT_FOUND' ||
-            error.code === 'UNAUTHORIZED' ||
-            error.code === 'FORBIDDEN' ||
-            error.code === 'VALIDATION_ERROR';
-
-          if (is4xxError) return false;
-        }
-
-        // Retry up to 3 times for other errors
-        return failureCount < 3;
-      },
+      retry: shouldRetryQuery,
 
       // Retry delay with exponential backoff
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -149,8 +158,26 @@ export const queryKeys = {
     all: ['nets'] as const,
     list: (section: string) => [...queryKeys.nets.all, 'list', section] as const,
   },
+  organizations: {
+    all: ['organizations'] as const,
+    list: () => [...queryKeys.organizations.all, 'list'] as const,
+  },
+  operations: {
+    all: ['operations'] as const,
+    lists: () => [...queryKeys.operations.all, 'list'] as const,
+    list: () => [...queryKeys.operations.lists()] as const,
+    details: () => [...queryKeys.operations.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.operations.details(), id] as const,
+    rfis: (id: string) => [...queryKeys.operations.all, 'rfis', id] as const,
+  },
   pace: {
     all: ['pace'] as const,
-    card: (section: string) => [...queryKeys.pace.all, 'card', section] as const,
+    /**
+     * Every theater of one squadron's card. The emblem is the squadron's, so
+     * the emblem mutations invalidate this prefix rather than one theater.
+     */
+    section: (section: string) => [...queryKeys.pace.all, 'card', section] as const,
+    card: (section: string, theater: PaceTheater) =>
+      [...queryKeys.pace.section(section), theater] as const,
   },
 } as const;

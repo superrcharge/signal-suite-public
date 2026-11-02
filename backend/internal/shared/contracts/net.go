@@ -10,6 +10,21 @@ type NetInfo struct {
 	Section string
 	// jem | mpu5 | both.
 	RadioType string
+	// conus | oconus | both. A card belongs to one theater; a net may serve
+	// either or both.
+	Theater string
+}
+
+// TheaterCarries reports whether a net declared for netTheater may sit on a
+// card of cardTheater. "both" matches either.
+//
+// One home for the rule, because both domains apply it: the PACE domain refuses
+// a save that breaks it, and the nets domain is where the value is declared.
+// The radio rule (CarriedBy) predates this package and is restated per domain;
+// two readings of one rule drift apart, which is the failure #236 closed, so
+// this one is not.
+func TheaterCarries(netTheater, cardTheater string) bool {
+	return netTheater == "both" || netTheater == cardTheater
 }
 
 // NetLookup lets the PACE domain validate a channel assignment without

@@ -9,9 +9,10 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import { collectPaths, shipScope } from './ship-scope.mjs'
+import { collectPaths, releaseScope, shipScope } from './ship-scope.mjs'
 
 const skips = (paths) => shipScope(paths).docChecks === 'skip'
+const skipsRelease = (paths) => releaseScope(paths).release === 'skip'
 
 // ---------------------------------------------------------------------------
 // Skipped: diffs that cannot move any documented fact
@@ -43,7 +44,11 @@ for (const paths of [
   ['.claude/context/structure.md'],
   ['README.md'],
   ['AGENTS.md'],
-  ['docs/self-hosting.md'],
+  ['deploy/README.md'],
+  // Check 10b: what the diagrams draw, which check-docs only counts.
+  ['backend/migrations/046_example.sql'],
+  ['diagrams/data-model.typ'],
+  ['deploy/main.tf'],
   // Mixed: one triggering path among many that do not.
   ['backend/go.mod', 'frontend/package.json', 'backend/internal/domain/net/net.go'],
 ]) {
@@ -57,6 +62,58 @@ test('names which check each trigger stands in for', () => {
   assert.equal(triggers.length, 1)
   assert.match(triggers[0], /checks 7, 8, 9, 10/)
   assert.match(triggers[0], /backend\/internal\/domain\/kit\/kit\.go/)
+})
+
+// ---------------------------------------------------------------------------
+// releaseScope, skipped: nothing that reaches the image or the infrastructure
+// ---------------------------------------------------------------------------
+
+for (const paths of [
+  ['.claude/commands/ship.md'],
+  ['README.md', 'docs/overview.md', 'docs/accreditation.md'],
+  ['diagrams/data-model.typ', 'diagrams/data-model-light.svg'],
+  ['scripts/verify.mjs', 'scripts/lib/ship-scope.mjs'],
+  ['.github/workflows/ci.yml'],
+  ['AGENTS.md', 'CLAUDE.md'],
+  // Tests cannot reach the binary or the bundle.
+  ['backend/internal/domain/kit/service_test.go'],
+  ['frontend/src/pages/terminals-page.test.tsx', 'frontend/src/test/setup.ts'],
+  [],
+]) {
+  test(`skips release: ${paths.join(', ') || '(empty diff)'}`, () => {
+    assert.equal(skipsRelease(paths), true)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// releaseScope, required: anything the image is built from, or deploy applies
+// ---------------------------------------------------------------------------
+
+for (const paths of [
+  ['backend/internal/domain/kit/service.go'],
+  ['backend/go.mod', 'backend/go.sum'],
+  ['backend/migrations/046_something.sql'],
+  ['frontend/src/pages/terminals-page.tsx'],
+  ['frontend/package.json', 'frontend/package-lock.json'],
+  ['frontend/vite.config.ts'],
+  ['Dockerfile.prod'],
+  ['.dockerignore'],
+  ['deploy/main.tf'],
+  // A test beside the code it tests still ships the code.
+  ['backend/internal/domain/kit/service.go', 'backend/internal/domain/kit/service_test.go'],
+  // Mixed: one shipped path among docs.
+  ['README.md', '.claude/commands/ship.md', 'frontend/src/main.tsx'],
+]) {
+  test(`requires release: ${paths.join(', ')}`, () => {
+    assert.equal(skipsRelease(paths), false)
+  })
+}
+
+test('names what each release trigger reaches', () => {
+  const { triggers } = releaseScope(['deploy/main.tf', 'backend/cmd/server/main.go'])
+  assert.equal(triggers.length, 2)
+  assert.match(triggers[0], /backend source.*backend\/cmd\/server\/main\.go/)
+  assert.match(triggers[1], /infrastructure.*deploy\/main\.tf/)
 })
 
 // ---------------------------------------------------------------------------

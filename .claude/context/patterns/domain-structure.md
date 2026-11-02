@@ -33,6 +33,7 @@ backend/
 │   │       ├── handler.go           # HTTP handlers
 │   │       ├── routes.go            # Route registration
 │   │       ├── validation.go        # Domain validator with custom rules
+│   │       ├── csv.go               # The domain's csvtable.Table (export, template, import), where it has CSV
 │   │       └── helpers.go           # Internal helper functions
 │   │
 │   ├── shared/

@@ -48,21 +48,25 @@ func diffTransport(old, updated *Transport) map[string]any {
 	addStr("kind", old.Kind, updated.Kind)
 	addStr("provider", old.Provider, updated.Provider)
 	addStr("description", old.Description, updated.Description)
+	addStr("owned_by", old.OwnedBy, updated.OwnedBy)
+	addStr("owner_country", old.OwnerCountry, updated.OwnerCountry)
 
 	return changes
 }
 
 func toResponse(t *Transport) dto.TransportResponse {
 	return dto.TransportResponse{
-		ID:          t.ID,
-		Name:        t.Name,
-		Kind:        t.Kind,
-		Provider:    t.Provider,
-		Description: t.Description,
-		CreatedBy:   t.CreatedBy,
-		UpdatedBy:   t.UpdatedBy,
-		CreatedAt:   t.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   t.UpdatedAt.Format(time.RFC3339),
+		ID:           t.ID,
+		Name:         t.Name,
+		Kind:         t.Kind,
+		Provider:     t.Provider,
+		Description:  t.Description,
+		OwnedBy:      t.OwnedBy,
+		OwnerCountry: t.OwnerCountry,
+		CreatedBy:    t.CreatedBy,
+		UpdatedBy:    t.UpdatedBy,
+		CreatedAt:    t.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    t.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -108,14 +112,16 @@ func (s *Service) CreateTransport(ctx context.Context, req *dto.CreateTransportR
 
 	now := time.Now().UTC()
 	t := &Transport{
-		Name:        name,
-		Kind:        kind,
-		Provider:    strings.TrimSpace(req.Provider),
-		Description: strings.TrimSpace(req.Description),
-		CreatedBy:   req.CreatedBy,
-		UpdatedBy:   req.UpdatedBy,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		Name:         name,
+		Kind:         kind,
+		Provider:     strings.TrimSpace(req.Provider),
+		Description:  strings.TrimSpace(req.Description),
+		OwnedBy:      strings.TrimSpace(req.OwnedBy),
+		OwnerCountry: strings.TrimSpace(req.OwnerCountry),
+		CreatedBy:    req.CreatedBy,
+		UpdatedBy:    req.UpdatedBy,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if err := s.repo.Create(ctx, t); err != nil {
@@ -191,6 +197,12 @@ func (s *Service) UpdateTransport(ctx context.Context, req *dto.UpdateTransportR
 	}
 	if req.Description != nil {
 		t.Description = strings.TrimSpace(*req.Description)
+	}
+	if req.OwnedBy != nil {
+		t.OwnedBy = strings.TrimSpace(*req.OwnedBy)
+	}
+	if req.OwnerCountry != nil {
+		t.OwnerCountry = strings.TrimSpace(*req.OwnerCountry)
 	}
 
 	t.UpdatedBy = req.UpdatedBy

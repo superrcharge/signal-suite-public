@@ -42,10 +42,10 @@ export interface HelpTopic {
    *
    * Defaults to 'tip', which is the honest default: most notes here are a
    * handy extra ("you can also edit a cell in place"), not a hazard. Amber was
-   * briefly applied to every one of them, and a warning colour on a helpful
-   * aside tells the reader to brace for a problem that is not there - do that
-   * on every note and the colour stops meaning anything, which costs you the
-   * few notes where it genuinely matters.
+   * briefly applied to all 22 of them, and a warning colour on a helpful aside
+   * tells the reader to brace for a problem that is not there - do that 22
+   * times and the colour stops meaning anything, which costs you the five
+   * notes where it genuinely matters.
    *
    * Use 'caution' only when the note says the reader cannot do something, or
    * cannot undo something.
@@ -68,10 +68,12 @@ export interface HelpGroup {
 }
 
 /**
- * Group order mirrors the app's own page picker - Dashboard, Terminals, Kits,
- * Catalog, PACE, then Sections (the Settings page) - so the help list and the
- * nav teach the same shape and neither has to be learned twice. Import & Export
- * follows, being a header control rather than a page.
+ * Group order mirrors the app's own page picker - Dashboard, Stats, Terminals,
+ * Kits, Catalog, PACE, Operations, Contracts, Users, Settings - so the help list
+ * and the nav teach the same shape and neither has to be learned twice. The
+ * Operations group follows PACE and the Sections group (Settings) follows it.
+ * Import & Export follows, being a header control rather than a page, and Using
+ * Help after it, for the same reason.
  *
  * Contracts sits in the picker between PACE and Users and has no group here,
  * which is the one deliberate break in that mirroring. The FAQ is curated
@@ -80,11 +82,11 @@ export interface HelpGroup {
  * the route-coverage check would otherwise read it as the kind of silent gap
  * it exists to catch.
  *
- * Comms Library sits directly after Equipment Catalog. The sidebar nests it
- * inside the catalog group, between Editor and Compatibility; here it is its
- * own group because the two answer different questions: the catalog group is
- * about one piece of equipment, and the library group is about the reference
- * tables every piece of equipment draws on.
+ * Comms Library sits directly after Equipment Catalog, which is where the
+ * sidebar puts it. It is its own group rather than more topics in the catalog
+ * group because the two answer different questions: the catalog group is about
+ * one piece of equipment, and the library group is about the reference tables
+ * every piece of equipment draws on.
  *
  * Roles & Access is deliberately last despite Users sitting mid-list in the
  * picker. It answers "why can I not do this", which is asked once and then
@@ -102,20 +104,35 @@ export const HELP_GROUPS: HelpGroup[] = [
     topics: [
       {
         id: 'dashboard-overview',
-        question: 'What is on the dashboard?',
+        question: 'What is on the Dashboard?',
         steps: ['Dashboard'],
-        note: 'Counts for terminals and kits, broken down by status and by family. Admins and editors also see contract tiles counting what expires within 30, 60 and 90 days.',
+        note: 'One tile for each page you can open, in the same order as the page menu, so what you see depends on your role, and clicking a tile opens that page. The Signal Suite mark at the top right brings you back here from anywhere.',
         roles: 'all',
         route: '/dashboard',
-        keywords: ['home page', 'counts', 'totals', 'summary', 'expiring'],
+        keywords: ['home page', 'landing page', 'start', 'tiles', 'Signal Suite'],
+      },
+    ],
+  },
+  {
+    id: 'stats',
+    title: 'Stats',
+    topics: [
+      {
+        id: 'stats-overview',
+        question: 'What is on the Stats page?',
+        steps: ['Stats'],
+        note: 'Terminals and kits counted by status, by type and by section, plus Catalog tiles for SATCOM, Radios and Waveforms. Admin and editor also see a Contracts panel, whose tiles count what expires within 30, 60 and 90 days.',
+        roles: 'all',
+        route: '/stats',
+        keywords: ['counts', 'totals', 'summary', 'expiring', 'by section', 'catalog', 'contracts'],
       },
       {
-        id: 'dashboard-tiles',
-        question: 'Can I click a number on the dashboard?',
-        steps: ['Dashboard', 'a tile'],
-        note: 'Every count is a link to the list it counts, already filtered - clicking Available under Terminals opens the terminals list showing only those.',
+        id: 'stats-tiles',
+        question: 'Can I click a number on the Stats page?',
+        steps: ['Stats', 'a tile'],
+        note: 'Every tile is a link. Terminal, kit and catalog tiles open their list already filtered - Available under Terminals shows only those - while Waveforms opens the Comms Library and the contract tiles open the Contracts page, both unfiltered.',
         roles: 'all',
-        route: '/dashboard',
+        route: '/stats',
         keywords: ['drill down', 'filtered list', 'tile', 'stat'],
       },
     ],
@@ -186,7 +203,46 @@ export const HELP_GROUPS: HelpGroup[] = [
         note: 'The three are independent - a kit can be on any combination of them, or none. Ticking one does not untick the others.',
         roles: ['admin', 'editor'],
         route: '/kits',
-        keywords: ['black network', 'secret', 'ts', 'top secret', 'classification', 'kit type'],
+        keywords: ['black network', 'secret', 'topsecret', 'classification', 'kit type'],
+      },
+      {
+        id: 'delete-kit',
+        question: 'How do I delete a kit?',
+        steps: ['Kits', 'Edit kit', 'Delete', 'Delete'],
+        note: 'The second Delete confirms the action in a "Delete kit?" dialog - this cannot be undone.',
+        tone: 'caution',
+        roles: ['admin', 'editor'],
+        route: '/kits',
+        keywords: ['remove kit'],
+      },
+      {
+        id: 'filter-terminals-kits',
+        question: 'How do I narrow the terminals or kits list?',
+        steps: ['Terminals', 'Available'],
+        note: 'Type in the search box, click a count in the strip across the top such as Available to show only that status, or pick a model (a kit type on Kits) in the toolbar. The sidebar does the same from any page: a model under Starshield, Paradigm or OneWeb, Remote, IFK or ATK under Kits:, and a squadron under By Section:, which keeps its filter when you switch between Terminals and Kits.',
+        roles: 'all',
+        route: '/terminals',
+        keywords: ['search', 'filter', 'status', 'model', 'variant', 'kit type', 'by section', 'section filter', 'sidebar', 'mini', 'hp', 'hornet', 'ragno', 'remote', 'ifk', 'atk'],
+      },
+      {
+        id: 'tag-terminal',
+        question: 'How do I tag terminals for an operation?',
+        steps: ['Terminals', 'Edit terminal', 'Tag', 'Save Changes'],
+        note: 'Pick an existing tag or type a new one - a terminal carries one tag, and clearing the box removes it. Once any terminal carries a tag, a tag filter joins the toolbar on the Terminals page.',
+        roles: ['admin', 'editor'],
+        route: '/terminals',
+        keywords: ['tag', 'label', 'operation', 'group terminals', 'tag filter'],
+      },
+      {
+        id: 'manage-tags',
+        question: 'How do I create or delete a tag?',
+        steps: ['Settings', 'Tags', 'New tag name', 'Add tag'],
+        note: 'The Tags panel lists every tag in the system, including ones typed straight onto a terminal, with how many terminals use each. Deleting one removes it from all of them, and the confirmation says how many that is.',
+        roles: ['admin', 'editor'],
+        // The Tags tab, not the page: Settings opens on Sections for these roles.
+        route: '/settings?tab=tags',
+        gate: 'canWrite',
+        keywords: ['tag', 'tags panel', 'delete tag', 'new tag', 'operation'],
       },
     ],
   },
@@ -223,12 +279,12 @@ export const HELP_GROUPS: HelpGroup[] = [
       },
       {
         id: 'paused-filters',
-        question: 'Why does the catalog say a filter is paused?',
-        steps: ['Catalog', 'Filters', 'Paused'],
-        note: 'A waveform filter cannot be asked of a SATCOM terminal, so switching tabs holds it rather than applying it. It is kept, not dropped, so switching back restores it.',
+        question: 'Why does the catalog say a filter is held for another tab?',
+        steps: ['Catalog', 'Filters', 'Held for the RADIO tab'],
+        note: 'A waveform filter cannot be asked of a SATCOM terminal, so switching tabs holds it at the top of the rail rather than applying it, and switching back restores it. Each held filter is a chip whose cross drops it, and Clear paused (n) drops them all once more than one is held.',
         roles: 'all',
         route: '/catalog',
-        keywords: ['paused', 'held filter', 'not filtering', 'tab', 'why no results'],
+        keywords: ['paused', 'held filter', 'held for another tab', 'clear paused', 'not filtering', 'tab', 'why no results'],
       },
       {
         id: 'add-catalog-record',
@@ -244,7 +300,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'edit-catalog-card',
         question: 'How do I edit a catalog card?',
         steps: ['Catalog', 'your record', 'Edit'],
-        note: 'Click any equipment card to open its sheet, then use Edit - or open the editor directly and pick a record from the rail. An RTO can edit radio records only, and sees a refusal on a SATCOM one.',
+        note: 'Click any equipment card to open its sheet, then use Edit - or open the editor directly and pick a record from the rail. An RTO can edit radio records only, so a SATCOM sheet shows no Edit and a SATCOM record in the editor shows a refusal.',
         roles: ['admin', 'editor', 'rto'],
         route: '/catalog',
         keywords: ['update spec sheet', 'equipment card'],
@@ -253,17 +309,27 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'upload-photo',
         question: 'How do I upload a photo for a piece of equipment?',
         steps: ['Catalog', 'Editor', 'your record', 'Photo', 'Upload Photo'],
-        note: 'Save the record first, then upload. The Photo controls appear once the item has been added to the catalog.',
+        note: 'Save the record first, then upload - the Photo controls appear once the item has been added to the catalog. Once it has a photo, the same button reads Replace Photo.',
         roles: ['admin', 'editor', 'rto'],
         route: '/catalog/editor',
         gate: 'canWriteRadio',
         keywords: ['equipment image', 'crop photo'],
       },
       {
+        id: 'remove-photo',
+        question: 'How do I remove a photo from a piece of equipment?',
+        steps: ['Catalog', 'Editor', 'your record', 'Photo', 'Remove photo'],
+        note: 'Remove photo is the small red × on the corner of the photo, shown once a record has one. It asks first, because the image is deleted rather than hidden: to get it back, upload it again.',
+        roles: ['admin', 'editor', 'rto'],
+        route: '/catalog/editor',
+        gate: 'canWriteRadio',
+        keywords: ['delete photo', 'clear equipment image'],
+      },
+      {
         id: 'print-data-sheet',
         question: 'How do I print a data sheet?',
         steps: ['Catalog', 'your record', 'Print / Save PDF'],
-        note: 'The share icon beside Print / Save PDF offers a .png, copy to clipboard, and a PowerPoint slide of the sheet.',
+        note: 'The export menu beside Print / Save PDF offers a .png, copy to clipboard, and a PowerPoint slide of the sheet.',
         roles: 'all',
         route: '/catalog',
         keywords: ['spec sheet pdf', 'equipment printout'],
@@ -280,8 +346,8 @@ export const HELP_GROUPS: HelpGroup[] = [
       {
         id: 'compare-pick-equipment',
         question: 'How do I choose what goes into a comparison?',
-        steps: ['Compare', 'Equipment (n)', 'SATCOM'],
-        note: 'There is no limit, and SATCOM and radio can sit side by side. Columns appear in the order you add them, and the small cross on a column header drops it again.',
+        steps: ['Compare', 'Equipment', 'SATCOM', 'ALL'],
+        note: 'Pick records one at a time, or ALL at the start of the SATCOM or Radio row for the whole group - there is no limit, and SATCOM and radio can sit side by side. Columns appear in the order you add them, and the small cross on a column header drops it again.',
         roles: 'all',
         route: '/catalog/compare',
         keywords: ['add column', 'remove column', 'pick records', 'all satcom', 'all radio', 'column order'],
@@ -324,7 +390,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'comms-library-what',
         question: 'What is the Comms Library?',
         steps: ['Comms Library', 'Waveforms'],
-        note: 'Four global reference tables - Waveforms, Services, Transports and Platforms - picked from the chips at the top. This is not the Nets Library, which holds one squadron’s nets and lives under PACE.',
+        note: "Four global reference tables - Waveforms, Services, Transports and Platforms - picked from the chips at the top. This is not the Nets Library, which holds one squadron's nets and lives under PACE, and the organizations that join an operation are kept in Settings, Organizations rather than here.",
         roles: 'all',
         route: '/catalog/comms-library',
         keywords: ['rf library', 'reference', 'global', 'waveforms', 'services', 'transports', 'platforms', 'what is'],
@@ -333,7 +399,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'comms-library-moved',
         question: 'Where did the Waveforms and Services tabs on the catalog go?',
         steps: ['Comms Library'],
-        note: 'They moved out of the catalog browse tabs into the Comms Library, which is where Transports joined them. An old link to the catalog tabs still works and brings you here.',
+        note: 'They moved out of the catalog browse tabs into the Comms Library, which is where Transports and Platforms joined them. An old link to the catalog tabs still works and brings you here.',
         roles: 'all',
         route: '/catalog/comms-library',
         keywords: ['moved', 'missing tab', 'waveforms tab', 'services tab', 'gone', 'old link'],
@@ -341,7 +407,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       {
         id: 'add-waveform',
         question: 'How do I add a waveform?',
-        steps: ['Comms Library', 'Waveforms', '+ Add to Waveform Library'],
+        steps: ['@add', '@add-waveform', '+ Add a waveform', '+ Add to Waveform Library'],
         roles: ['admin', 'editor', 'rto'],
         route: '/catalog/comms-library',
         // No gate. `gate` means "following this route without the permission
@@ -354,7 +420,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       {
         id: 'add-service',
         question: 'How do I add a service?',
-        steps: ['Comms Library', 'Services', '+ Add to Service Library'],
+        steps: ['@add', '@add-service', '+ Add a service', '+ Add to Service Library'],
         note: 'An RTO can browse the Service Library, but the create and edit controls are for admin and editor only.',
         roles: ['admin', 'editor'],
         route: '/catalog/comms-library?lib=services',
@@ -371,7 +437,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       {
         id: 'add-transport',
         question: 'How do I add a transport?',
-        steps: ['Comms Library', 'Transports', '+ Add to Transport Library'],
+        steps: ['@add', '@add-transport', '+ Add a transport', '+ Add to Transport Library'],
         note: 'A transport is a non-SATCOM path a PACE tier can name, so anyone who builds PACE cards can add one. Only a viewer is left reading it.',
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/catalog/comms-library?lib=transports',
@@ -381,7 +447,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       {
         id: 'transport-kind',
         question: 'How do I add a transport kind that is not in the list?',
-        steps: ['Comms Library', 'Transports', 'Kind', '+ Add new kind…'],
+        steps: ['Comms Library', 'Transports', '+ Add a transport', 'Kind', '+ Add new kind…'],
         note: 'The last entry in the Kind dropdown swaps it for a free-text box, so a path nobody has named yet does not need a code change.',
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/catalog/comms-library?lib=transports',
@@ -389,37 +455,75 @@ export const HELP_GROUPS: HelpGroup[] = [
       },
       {
         id: 'add-platform',
-        question: 'How do I add an aircraft, ship or coalition asset?',
-        steps: ['Comms Library', 'Platforms', '+ Add to Platform Library'],
-        note: 'A platform is someone else’s asset - an F-35, a DDG, a coalition vehicle - entered once so it can be a column in the compatibility matrix. Tick the waveforms it carries, the catalog radios it carries, or both: a carried radio’s waveforms follow its catalog record, so editing the radio updates the matrix.',
+        question: 'How do I add an aircraft, ship or ground station?',
+        steps: ['@add', '@add-platform', '+ Add a platform', '+ Add to Platform Library'],
+        note: "A platform is someone else's asset - an F-35, a DDG, a ground station - entered once so it can be a column in the compatibility matrix. Toggle every branch that operates it (OGA is another government agency), then tick the waveforms it carries, the catalog radios it carries, or both: a carried radio's waveforms follow its catalog record, so editing the radio updates the matrix.",
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/catalog/comms-library?lib=platforms',
         // No gate - see add-waveform.
-        keywords: ['platform', 'aircraft', 'ship', 'airframe', 'coalition', 'joint', 'organic', 'platform library'],
+        keywords: ['platform', 'aircraft', 'ship', 'airframe', 'ground station', 'type', 'platform library', 'category', 'branch', 'service', 'oga', 'army', 'navy', 'air force', 'marines', 'space force', 'coast guard'],
+      },
+      {
+        id: 'library-owner',
+        question: 'How do I record who owns a service or transport provider?',
+        steps: ['Comms Library', 'Services', 'your entry', 'Owned by', 'Country', 'Save'],
+        note: 'Services and Transports both carry Owned by and Country, so a commercial or foreign provider is named on the row beside its name. Both are optional free text, and the search box matches them too.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/catalog/comms-library?lib=services',
+        // No gate - see add-waveform. Services admit admin and editor only,
+        // transports every role but viewer; the union is the honest Who line.
+        keywords: ['owner', 'owned by', 'country', 'provider', 'foreign', 'commercial', 'nationality'],
+      },
+      {
+        id: 'filter-platforms',
+        question: 'How do I find a platform in a long Platform Library?',
+        steps: ['Comms Library', 'Platforms', 'Category', 'Type'],
+        note: 'The Category row filters by operating branch and the Type row by kind of platform, each chip carrying its count; pick several in a row for any of them, and Clear drops the chips. The Search platforms box beside the count narrows the list by text on top of that.',
+        roles: 'all',
+        route: '/catalog/comms-library?lib=platforms',
+        keywords: ['filter platforms', 'search platforms', 'branch', 'category', 'type', 'aircraft', 'ship', 'narrow'],
       },
       {
         id: 'compatibility-matrix',
         question: 'How do I see which assets are compatible?',
         steps: ['Compatibility', 'Columns'],
-        note: 'Filter by category with the chips and pick the assets you care about as columns, then read across a waveform’s row to see which of them support it. A platform supports a waveform whether it lists it directly or carries a radio that does.',
+        note: "Narrow by any number of branches and types under Filters, then pick columns from Columns, grouped by branch, or Select all, and read across a waveform's row to see which of them support it. A platform supports a waveform whether it lists it directly or carries a radio that does.",
         roles: 'all',
         route: '/catalog/compatibility',
-        keywords: ['compatibility', 'matrix', 'interoperability', 'crossover', 'common waveform', 'joint force', 'pace'],
+        keywords: ['compatibility', 'matrix', 'interoperability', 'crossover', 'common waveform', 'joint force', 'pace', 'service', 'branch', 'category', 'filter'],
+      },
+      {
+        id: 'compatibility-checks',
+        question: 'What do the coloured checks in the compatibility matrix mean?',
+        steps: ['Compatibility'],
+        note: 'Each branch has its own colour, matching its chip in the column header, and a platform operated by two branches draws two checks on every waveform it supports, one per branch - filter to one branch and only that check is drawn. A catalog radio belongs to no branch and draws a plain check, and the key beneath the matrix names every colour on screen.',
+        roles: 'all',
+        route: '/catalog/compatibility',
+        keywords: ['colour', 'color', 'check', 'tick', 'two checks', 'legend', 'key', 'branch colour', 'joint'],
+      },
+      {
+        id: 'compatibility-hide-empty',
+        question: 'How do I hide waveforms nothing in the matrix supports?',
+        steps: ['Compatibility', 'Hide empty rows'],
+        note: 'It drops every waveform row with no check in the columns on screen, and pressing it again brings them back. The printout always leaves those rows off.',
+        roles: 'all',
+        route: '/catalog/compatibility',
+        keywords: ['empty rows', 'hide rows', 'unsupported', 'shorter matrix', 'blank rows'],
       },
       {
         id: 'print-compatibility',
         question: 'How do I print the compatibility matrix?',
         steps: ['Compatibility', 'Print / Save PDF', 'Print / Save PDF'],
-        note: 'Print / Save PDF opens a landscape preview of exactly the categories and columns you had on screen, with empty rows left off. The share icon beside it saves the matrix as a slide, a copied image or a .png instead.',
+        note: 'Print / Save PDF previews the pages it will print from the branches, types and columns on screen, empty rows left off, continuing across and down pages as needed; Fit to one page, beside it, shrinks the sheet onto one page when it can, and the page count says how many it will take. The share icon saves the matrix as a slide, a copied image or a .png instead.',
         roles: 'all',
         route: '/catalog/compatibility',
-        keywords: ['print matrix', 'save pdf', 'compatibility sheet', 'powerpoint', 'png', 'share'],
+        keywords: ['print matrix', 'save pdf', 'compatibility sheet', 'powerpoint', 'png', 'share', 'fit to one page', 'pages'],
       },
       {
         id: 'print-comms-library',
         question: 'How do I print or share a library?',
         steps: ['Comms Library', 'Print / Save PDF', 'Print / Save PDF'],
-        note: 'Print / Save PDF opens a read-only view of the open library, with no add form and no pencils, ready for the print dialog; the share icon beside it saves the table as a slide, a copied image or a .png. For ink-on-white, a CSV from the header share menu (Export, then Download CSV) prints better.',
+        note: 'Print / Save PDF opens a read-only view of the open library, with no add form and no pencils, ready for the print dialog; the share icon beside it saves the table as a slide, a copied image or a .png. For ink-on-white, the CSV export in the header prints better.',
         roles: 'all',
         route: '/catalog/comms-library',
         keywords: ['print library', 'print waveforms', 'print services', 'print transports', 'print platforms', 'save pdf', 'share library'],
@@ -428,10 +532,21 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'edit-library-entry',
         question: 'How do I edit or remove a library entry?',
         steps: ['Comms Library', 'a library', 'your entry'],
-        note: 'The pencil on a row edits it in place; the red cross removes it after a confirm. Removing a service, transport or platform leaves the equipment records and PACE cards using it as they are, but a waveform that a catalog radio or a platform still carries cannot be removed (its row shows the count and names), and renaming a waveform abbrev carries the new spelling onto every record that used the old one.',
-        roles: ['admin', 'editor', 'rto'],
+        note: 'The pencil on a row, or a click anywhere on it, edits it in place; the red cross removes it after a confirm. Who sees them depends on the library: waveforms admin, editor and RTO, services admin and editor, and transports and platforms every role but viewer.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/catalog/comms-library',
-        keywords: ['delete waveform', 'delete service', 'delete transport', 'rename', 'remove', 'safe to delete'],
+        // No gate - see add-waveform. No one roles list is true of all four
+        // libraries, so the note names them per library and `roles` is the union.
+        keywords: ['delete waveform', 'delete service', 'delete transport', 'delete platform', 'edit waveform', 'rename', 'remove', 'pencil'],
+      },
+      {
+        id: 'library-entry-in-use',
+        question: 'What happens to records when I remove or rename a library entry?',
+        steps: ['Comms Library', 'a library', 'your entry'],
+        note: 'Removing a service, transport or platform leaves the equipment records and PACE cards using it as they are, but a waveform that a catalog radio or a platform still carries cannot be removed - its row shows the count and names. Renaming a waveform abbrev carries the new spelling onto every record that used the old one.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/catalog/comms-library',
+        keywords: ['in use', 'safe to delete', 'rename abbrev', 'cannot remove waveform', 'carried by'],
       },
       {
         id: 'where-cir-mir',
@@ -439,7 +554,10 @@ export const HELP_GROUPS: HelpGroup[] = [
         steps: ['Catalog', 'Editor', 'your record', 'Services Available'],
         note: 'Not in the Service Library - rates are per terminal, so they live on the service rows of that record in the editor. Best Effort (no committed CIR/MIR) clears and disables the four rate fields.',
         tone: 'caution',
-        roles: ['admin', 'editor', 'rto'],
+        // Not rto: CIR/MIR rows are on SATCOM records, which an rto cannot edit.
+        // The gate stays canWriteRadio because it describes the ROUTE - the
+        // editor refuses a viewer or planner outright - not this task.
+        roles: ['admin', 'editor'],
         route: '/catalog/editor',
         gate: 'canWriteRadio',
         keywords: ['cir mir', 'cir', 'mir', 'bandwidth', 'committed rate', 'best effort', 'mbps', 'data rate'],
@@ -454,10 +572,12 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'add-net',
         question: 'How do I add a net?',
         steps: ['@add', '@add-net', 'your squadron'],
-        note: 'Add Net always needs a squadron. If you are not already viewing one, it opens the Nets Library picker first.',
+        note: 'The drawer opens where you are, with Squadron as its first field, pre-selected when the page belongs to one. Create lands on that squadron\'s library with the new net on screen.',
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/nets',
-        gate: 'canWritePace',
+        // No gate, for the add-waveform reason: /nets and /pace are squadron
+        // pickers that refuse nobody, and the pages behind them hide their own
+        // write controls. The same holds for every topic below routed there.
         keywords: ['new channel', 'radio net', 'jem', 'mpu5'],
       },
       {
@@ -473,7 +593,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'print-nets',
         question: 'How do I print or share a squadron\'s nets?',
         steps: ['Nets Library', 'Print / Save PDF', 'Print / Save PDF'],
-        note: 'Print / Save PDF opens a read-only view of the radio tab you had open, ready for the print dialog; the share icon beside it saves the table as a slide, a copied image or a .png. A CSV from the header share menu (Export, then Download CSV) is the better print for ink-on-white.',
+        note: 'Print / Save PDF opens a read-only view of the radio tab you had open, ready for the print dialog; the share icon beside it saves the table as a slide, a copied image or a .png. The CSV export in the header is the better print for ink-on-white.',
         roles: 'all',
         route: '/nets',
         keywords: ['print nets', 'print net list', 'save pdf', 'share nets', 'nets slide'],
@@ -485,7 +605,6 @@ export const HELP_GROUPS: HelpGroup[] = [
         note: "Pick a net from a channel's dropdown. Once one is assigned, TX and RX override fields appear beneath it.",
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/pace',
-        gate: 'canWritePace',
         keywords: ['channel wheel', 'radio', 'mpu5 channels'],
       },
       {
@@ -495,17 +614,34 @@ export const HELP_GROUPS: HelpGroup[] = [
         note: 'Each tier - Primary, Alternate, Contingency, Emergency - picks one source (equipment, transport, or a custom label) plus a free-text Detail line.',
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/pace',
-        gate: 'canWritePace',
         keywords: ['primary alternate contingency emergency', 'tiers', 'pace tiles'],
       },
       {
         id: 'upload-emblem',
         question: 'How do I upload a squadron emblem?',
-        steps: ['PACE', 'JEM/MPU5 Wheels', 'your squadron', 'Edit', 'Squadron emblem', 'Upload', 'Save'],
+        steps: ['PACE', 'JEM/MPU5 Wheels', 'your squadron', 'Edit', 'Squadron emblem', 'Upload'],
+        note: 'Choosing the file opens Crop Emblem, whose round window is exactly what the wheel hub shows: zoom, drag, and pick a Black or White background to fill the circle around a logo on a square. It uploads on Apply Crop with an Emblem uploaded message and no Save, and belongs to the squadron, so its CONUS and OCONUS cards both show it.',
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/pace',
-        gate: 'canWritePace',
-        keywords: ['squadron patch', 'logo', 'card header'],
+        keywords: ['squadron patch', 'logo', 'card header', 'crop emblem', 'zoom', 'circle', 'background'],
+      },
+      {
+        id: 'remove-emblem',
+        question: 'How do I remove a squadron emblem?',
+        steps: ['PACE', 'JEM/MPU5 Wheels', 'your squadron', 'Edit', 'Squadron emblem', 'Remove'],
+        note: 'Remove sits beside the current emblem and takes effect at once, with an Emblem removed message and no Save needed. Both the CONUS and OCONUS cards lose it.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/pace',
+        keywords: ['delete emblem', 'clear patch', 'remove logo'],
+      },
+      {
+        id: 'pace-hide-preview',
+        question: 'How do I give the card editor more room?',
+        steps: ['PACE', 'JEM/MPU5 Wheels', 'your squadron', 'Edit', 'Hide Preview'],
+        note: 'Hide Preview folds away the live card beside the form, and the same button, now reading Show Preview, brings it back.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/pace',
+        keywords: ['preview', 'show preview', 'live card', 'wider form', 'more space'],
       },
       {
         id: 'print-pace-card',
@@ -516,13 +652,40 @@ export const HELP_GROUPS: HelpGroup[] = [
         keywords: ['pdf', 'comms card', 'wheel printout'],
       },
       {
+        id: 'switch-theater',
+        question: 'Where is the OCONUS version of a card or nets list?',
+        steps: ['PACE', 'JEM/MPU5 Wheels', 'your squadron', 'OCONUS'],
+        note: 'The same CONUS / OCONUS switch is on the Nets Library, and Edit opens the card you are looking at.',
+        roles: 'all',
+        route: '/pace',
+        keywords: ['oconus', 'conus', 'theater', 'overseas', 'deployed', 'home station'],
+      },
+      {
+        id: 'net-theater-radio',
+        question: 'How do I use one net in both theaters, or on both radios?',
+        steps: ['PACE', 'Nets Library', 'your squadron', 'Edit net', 'Theater', 'Both', 'Save Changes'],
+        note: 'Theater (CONUS, OCONUS or Both) decides which list and which card a net appears on, and Carried by (JEM, MPU5 or Both) does the same for the two wheels, so a shared net is entered once. A new net starts in the theater the page is showing.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/nets',
+        keywords: ['theater', 'carried by', 'both', 'conus', 'oconus', 'jem', 'mpu5', 'shared net'],
+      },
+      {
+        id: 'net-missing-from-channel',
+        question: "Why is a net missing from a channel's dropdown?",
+        steps: ['PACE', 'Nets Library', 'your squadron', 'Edit net', 'Carried by'],
+        note: "A channel offers only the squadron's nets that its radio carries and that serve the card's theater, so check Carried by and Theater on the net. A net moved to the other theater after it was assigned stops the card saving, with a message that it is outside the card's theater, until that channel is changed.",
+        tone: 'caution',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/nets',
+        keywords: ['missing net', 'net not listed', 'dropdown empty', 'wrong theater', 'wrong radio', 'outside its theater', 'cannot save card'],
+      },
+      {
         id: 'pace-changed-marks',
         question: 'How do I show what changed on a revised comms card?',
         steps: ['PACE', 'JEM/MPU5 Wheels', 'your squadron', 'Edit', 'the tick beside a field', 'Save'],
         note: 'A ticked value prints red on the card, the print sheet and both exports, so whoever receives the revised card can see what moved; the marks are set by hand, not worked out by comparing saves. Type a label such as v2 in Version to print it after the date, and use Clear all marks to start the next revision.',
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/pace',
-        gate: 'canWritePace',
         keywords: ['changed', 'red', 'version label', 'revision', 'what moved', 'clear all marks'],
       },
       {
@@ -534,6 +697,164 @@ export const HELP_GROUPS: HelpGroup[] = [
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/nets',
         keywords: ['delete blocked', 'wheel conflict', 'net in use'],
+      },
+    ],
+  },
+  {
+    id: 'operations',
+    title: 'Operations',
+    topics: [
+      {
+        id: 'add-operation',
+        question: 'How do I add an operation?',
+        steps: ['Operations', 'Add Operation'],
+        note: 'Give it a name and, if you like, an acronym and notes; there are no dates, because operations are fluid, and the same drawer, opened again with Edit, holds its Phases (Phase I to IV to begin with) and its Locations, the places units sit, such as ISB, FSB or MSS. It then appears as a tile on the Operations page and as a row under Operations in the sidebar.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/operations?drawer=add',
+        gate: 'canWritePace',
+        keywords: ['new operation', 'exercise', 'event', 'participants', 'phases', 'locations', 'acronym'],
+      },
+      {
+        id: 'edit-operation',
+        question: 'How do I edit or delete an operation?',
+        steps: ['Operations', 'the operation', 'Edit'],
+        note: 'Edit in the operation\'s banner opens its drawer, where you change the name, acronym and notes, use Add phase and Add location, and take one out with its X, which asks first ("Remove phase?" says its asset marks go with it, "Remove location?" that its units fall under No location) and takes effect when you Save. Delete, at the bottom left, asks "Delete operation?" and then removes the operation and its participants for good.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/operations',
+        // No gate: the operation page refuses nobody, so a canWritePace gate
+        // here would fail "never gates a topic whose route refuses nobody";
+        // the banner simply has no Edit for a reader without the flag.
+        keywords: ['rename', 'delete operation', 'add phase', 'remove phase', 'reorder', 'add location', 'remove location', 'acronym', 'notes'],
+      },
+      {
+        id: 'add-organization',
+        question: 'How do I add an organization that can check in to an operation?',
+        steps: ['Operations', 'the operation', 'Participants', 'Join Operation', 'Add to library'],
+        note: 'The wizard lists the organizations already in the library, Other names a one-off partner on this operation alone, and Add to library creates a new organization every operation can then pick; Add organization in Settings, Organizations is the other place to add one, and the Import and export control in the header opens with Organizations already chosen there. The key is a lowercase slug that never changes, the name, short label, branch and colour are what an operation shows for it (the section link is stored, not shown), and editing or deleting one is in Settings, Organizations.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/operations',
+        // No gate - see join-operation: the operation page refuses nobody,
+        // and the Participants popup hides Join Operation from a reader
+        // without the flag.
+        keywords: ['organization', 'organisation', 'squadron', 'unit', 'agency', 'participant', 'check in', 'add to library'],
+      },
+      {
+        id: 'edit-organization',
+        question: 'How do I edit or delete an organization?',
+        steps: ['Settings', 'Organizations', 'Edit organization', 'Save'],
+        note: 'The pencil on an organization\'s row opens the Add to library form with its key fixed, and Delete asks "Delete organization?" before removing it from the library for good. Delete is off while an operation has the organization joined, and its tooltip says how many, so remove it from those operations first.',
+        tone: 'caution',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        // The tab, not the page: Settings opens on Sections for an admin or
+        // editor. Gated because a reader without canWritePace has no
+        // Organizations tab and lands on the data panel instead.
+        route: '/settings?tab=organizations',
+        gate: 'canWritePace',
+        keywords: ['edit organization', 'delete organization', 'rename organization', 'remove organization', 'library'],
+      },
+      {
+        id: 'join-operation',
+        question: 'How does an organization join an operation?',
+        steps: ['Operations', 'the operation', 'Participants', 'Join Operation'],
+        note: 'Open Participants and choose Join Operation, or use the prompt on an empty Loadout; step 1, naming the organization, is enough to join, and anything else can be added later from Participants, where Edit reopens the same steps. Step 2 declares the platforms it brings before the radios (skipped when dismounted), step 3 picks equipment, step 4 sets the phases each platform and piece of equipment is in, step 5 picks transports and their phases, and step 6 sets, phase by phase, where the unit sits and who it must talk to, with the live status; contact and review close it.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/operations',
+        // No gate: the operation page refuses nobody, and the Participants
+        // popup hides Join Operation from a reader without canWritePace.
+        keywords: ['join', 'check in', 'check-in', 'participant', 'participants', 'organization', 'squadron', 'other', 'ad hoc', 'poc', 'point of contact', 'terminals', 'radios', 'wizard', 'platform', 'platforms', 'dismounted', 'airframe', 'vessel', 'vehicle', 'phase', 'location', 'must talk', 'requirement'],
+      },
+      {
+        id: 'participant-edit-conflict',
+        question: 'Why did my check-in edit not save?',
+        steps: ['Operations', 'the operation', 'Participants'],
+        note: 'Someone else saved that unit while you had it open, so Save is refused with "this check-in was changed by someone else; reload it and try again" in red above the buttons, and the wizard stays open on your picks. Note what you changed, close the wizard, then open the unit with Edit in Participants again: it now shows their version, and your changes go on top of it.',
+        tone: 'caution',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/operations',
+        // No gate, as for join-operation: the operation page refuses nobody.
+        keywords: ['conflict', 'someone else', 'changed', 'reload', 'stale', 'not saved', 'refused', 'error', 'save'],
+      },
+      {
+        id: 'participants-list',
+        question: 'Who has joined an operation?',
+        steps: ['Operations', 'the operation', 'Participants'],
+        note: 'The count is on the button, and the list shows each organization with what it brought and its POC; a row opens that unit\'s tab in Loadout, which says the same thing in full, and Matrix says it by waveform. Remove, the X beside Edit, asks first and then takes the organization out of the operation along with its phase marks, placements and requirements.',
+        roles: 'all',
+        route: '/operations',
+        // No gate: the list is a read, and a reader sees it without the
+        // Edit and Join Operation controls.
+        keywords: ['participants', 'who joined', 'joined', 'organizations', 'list', 'count', 'poc', 'edit participant', 'remove', 'loadout', 'tabs'],
+      },
+      {
+        id: 'post-rfi',
+        question: 'How do I raise an RFI to the other units?',
+        steps: ['Operations', 'the operation', 'RFIs', 'Post RFI'],
+        note: 'Pick which unit you are asking as, write the question and press Post; the button on the banner then shows how many are open. Only you can resolve an RFI you posted.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        route: '/operations',
+        // No gate: the operation page refuses nobody.
+        keywords: ['rfi', 'request for information', 'question', 'ask', 'post', 'raise', 'asking as', 'unit'],
+      },
+      {
+        id: 'answer-rfi',
+        question: 'How do I answer or close an RFI?',
+        steps: ['Operations', 'the operation', 'RFIs', 'Reply', 'Resolve'],
+        note: 'Reply adds to the thread under the question, and Resolve, shown only to whoever posted it, moves it into Resolved at the bottom of the list. Everyone can read the list; Reply and Resolve need a writer role.',
+        roles: 'all',
+        route: '/operations',
+        // No gate: reading is open to every role, and a reader simply
+        // does not see Reply or Resolve.
+        keywords: ['rfi', 'reply', 'answer', 'resolve', 'close', 'resolved', 'thread', 'comment', 'request for information'],
+      },
+      {
+        id: 'operation-loadout-view',
+        question: 'What does a unit\'s tab in Loadout show?',
+        steps: ['Operations', 'the operation', 'Loadout'],
+        note: 'Each unit that joined has a tab listing its Platforms, Equipment and Transports, then By phase, a row per phase with its Location, a TIER SELECT mark where that phase supports it, and who it Must talk to, then its POC. Before anyone has joined, a writer sees a Join Operation button in its place and everyone else sees "No one has joined yet."',
+        roles: 'all',
+        route: '/operations',
+        // No gate: the tabs are a read, drawn for every role; Edit on a tab
+        // and the empty view's Join Operation are write-gated inside it.
+        keywords: ['loadout', 'tab', 'unit', 'by phase', 'location', 'tier select', 'must talk', 'poc', 'point of contact', 'platforms', 'equipment', 'transports', 'empty', 'no one has joined'],
+      },
+      {
+        id: 'operation-matrix-view',
+        question: 'Who can talk to whom in an operation?',
+        steps: ['Operations', 'the operation', 'Matrix'],
+        note: 'One column per organization that joined, one row per waveform, SATCOM service or transport any of them brings, and a cell naming the assets that provide it, so it answers what everyone could talk on rather than who must; open a column to split it into one per asset, and use the phase buttons to see one phase or All phases. Loadout switches back to the tabs, and the Equipment Catalog\'s Compatibility matrix is the wider comparison with platforms and catalog radios.',
+        roles: 'all',
+        route: '/operations',
+        // No gate: the matrix is a read, drawn for every role.
+        keywords: ['matrix', 'compatibility', 'who can talk', 'interoperability', 'common waveform', 'loadout', 'view', 'operation matrix', 'columns', 'phase'],
+      },
+      {
+        id: 'operation-web-view',
+        question: 'How do I see who must talk to whom in a phase?',
+        steps: ['Operations', 'the operation', 'Web'],
+        note: 'Web draws one phase at a time: locations as boxes holding each organization\'s card, and a line for every pair that must talk, green for Direct (a shared waveform, service or transport in that phase), amber dashed for Relay (only through other units) and red for No link, with the Tier select, the unit that phase supports, edged in amber. Show narrows it to All, the Gaps or Focus on one unit, and View plan, for those who can edit, opens the phase\'s plan beside it (the chip then reads Hide plan), whose Tier select, Locations and Must talk sections set the supported unit, where each unit sits and who must talk to whom, kept together by one Save.',
+        roles: 'all',
+        route: '/operations',
+        // No gate: the picture is a read, drawn for every role; only the
+        // View plan chip is write-gated, inside it.
+        keywords: ['web', 'phase', 'tier select', 'must talk', 'requirement', 'direct', 'relay', 'no link', 'gaps', 'focus', 'location', 'plan', 'who must talk', 'hide plan'],
+      },
+      {
+        id: 'print-operation',
+        question: 'How do I print or share an operation\'s phases?',
+        steps: ['Operations', 'the operation', 'Web', 'Print / Save PDF'],
+        note: 'Print / Save PDF opens one landscape page per phase, drawn in the Show mode and on the unit you had chosen, and the phase buttons above the pages print one phase alone. The share icon beside it saves the whole deck as a .pptx, one slide per phase in the Show mode on screen, where each unit and line is a PowerPoint shape and a line follows its unit when you drag it, or the phase on screen as a copied image or a .png.',
+        roles: 'all',
+        route: '/operations',
+        keywords: ['print operation', 'save pdf', 'share operation', 'phase slides', 'pptx', 'powerpoint', 'deck', 'web view'],
+      },
+      {
+        id: 'print-operation-matrix',
+        question: 'How do I print or share an operation\'s Matrix?',
+        steps: ['Operations', 'the operation', 'Matrix', 'Print / Save PDF'],
+        note: 'Print / Save PDF opens on the phase, or All phases, that the Matrix was showing and the phase buttons above the pages switch to another, a grid too wide or too tall for a page carrying on to the next under the same header. The share icon beside it saves what the Matrix is showing as a .pptx, where the grid is a PowerPoint table you can edit, or the grid on screen, with any organization you opened, as a copied image or a .png.',
+        roles: 'all',
+        route: '/operations',
+        keywords: ['print matrix', 'matrix pdf', 'share matrix', 'matrix slides', 'matrix pptx', 'powerpoint', 'table', 'deck', 'matrix view', 'all phases'],
       },
     ],
   },
@@ -557,36 +878,29 @@ export const HELP_GROUPS: HelpGroup[] = [
         note: "Two entry points reach the same dialog: the Sections panel in Settings, and the pencil that appears when you hover a section under the sidebar's By Section: group.",
         roles: ['admin', 'editor'],
         route: '/settings',
+        gate: 'canWrite',
         keywords: ['rename section', 'recolor', 'sidebar pencil'],
       },
       {
         id: 'delete-section-in-use',
         question: 'What happens when I delete a section that still has terminals in it?',
         steps: ['Settings', 'Edit section', 'Delete', 'Move terminals to', 'Move terminals & delete'],
-        note: 'A section that still has nets or a saved PACE card is refused outright, with a message naming what is there - that planning is never moved to another section, so delete or move it first. Otherwise the dialog swaps to a reassignment prompt: pick another section for the terminals and kits, or leave them sectionless.',
+        note: 'A section that still has nets or a saved PACE card is refused outright, with a message naming what is there - that planning is never moved to another section, so delete or move it first. Otherwise the dialog swaps to a reassignment prompt: pick another section for the terminals and kits, or leave Move terminals to on None and the button reads Clear terminals & delete.',
         tone: 'caution',
         roles: ['admin', 'editor'],
         route: '/settings',
+        gate: 'canWrite',
         keywords: ['reassign terminals', 'section in use', 'refused', 'nets', 'pace card'],
       },
       {
         id: 'section-pace-card',
         question: 'How do I give a section a PACE card?',
         steps: ['Settings', 'Edit section', 'PACE squadron', 'Save'],
-        note: 'Turning this switch on is what creates the section\'s own Nets library and JEM/MPU5 wheel.',
+        note: 'Turning this switch on is what gives the section its own Nets library and a JEM/MPU5 comms card for CONUS and another for OCONUS.',
         roles: ['admin', 'editor'],
         route: '/settings',
+        gate: 'canWrite',
         keywords: ['squadron', 'enable pace', 'nets library', 'wheel'],
-      },
-      {
-        id: 'manage-tags',
-        question: 'Where do I see or delete a tag?',
-        steps: ['Settings', 'Tags', 'Delete tag'],
-        note: 'Every tag in the system is listed with how many terminals carry it. Deleting a tag removes it from all of those terminals at once, after a confirm.',
-        tone: 'caution',
-        roles: ['admin', 'editor'],
-        route: '/settings',
-        keywords: ['tags', 'tag catalog', 'remove tag', 'label', 'terminal tags'],
       },
     ],
   },
@@ -610,12 +924,55 @@ export const HELP_GROUPS: HelpGroup[] = [
         keywords: ['csv upload', 'bulk import'],
       },
       {
+        id: 'settings-import-export',
+        question: 'What is the Import/Export tab in Settings?',
+        steps: ['Settings', 'Import/Export', 'Export'],
+        note: 'It lists every dataset that is not tied to a squadron, one row each, with its own Export, Template and Import buttons, so you do not pick a dataset first. Nets and PACE channels are not listed there, because the Import and export control in the header asks which squadron.',
+        roles: 'all',
+        // No route: plain /settings refuses a reader without canWrite and
+        // this tab is open to every role, so a gated button would hide it
+        // from the viewers who can use it and an ungated one is refused.
+        keywords: ['settings', 'csv', 'every dataset', 'one row', 'organizations csv'],
+      },
+      {
+        id: 'import-choose-file',
+        question: 'How do I load a filled-in CSV?',
+        steps: ['@share', '@import', 'Dataset', 'Choose file'],
+        note: 'Dataset lists only what your role can import into, and Nets also asks for a Squadron, since its rows load into the one you pick. The file uploads as soon as you choose it; a clean file closes with a message saying how many rows came in.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        keywords: ['upload csv', 'import file', 'dataset', 'squadron', 'nets import'],
+      },
+      {
+        id: 'import-skipped-rows',
+        question: 'Why were some rows skipped on import?',
+        steps: ['@share', '@import', 'Choose file', 'Copy report'],
+        note: 'The report lists every skipped row by row number and name with its reason, and everything not listed was imported, so a second file should carry only the rows you corrected. If every skipped row is one of the template\'s EXAMPLE rows, delete those from your file.',
+        roles: ['admin', 'editor', 'rto', 'planner'],
+        keywords: ['rejected rows', 'skipped rows', 'import errors', 'failed rows', 'example rows', 'copy report'],
+      },
+      {
         id: 'import-hidden-viewer',
         question: "Why don't I see the Import button?",
         steps: ['@share', '@template'],
         note: 'A viewer cannot change data, so the menu offers no Import. Template is still there for everyone, so you can always see which columns a file needs.',
         roles: 'all',
         keywords: ['viewer permissions', 'missing button', 'template only'],
+      },
+    ],
+  },
+  {
+    // The header's own ? control, a header control like Import & Export and
+    // so placed after it.
+    id: 'help',
+    title: 'Using Help',
+    topics: [
+      {
+        id: 'search-help',
+        question: 'How do I search the help?',
+        steps: ['@help', 'Search help...'],
+        note: 'Type the words you mean, in any order and even half typed, rather than a whole question: only the topics matching the most of your words are shown, best first, and each of your words is marked where it appears. A topic whose match is not in its question says matched in the steps, matched in the note or matched a keyword, so open it to find the mark.',
+        roles: 'all',
+        keywords: ['find', 'search', 'words', 'ranked', 'best match', 'highlight', 'marked', 'faq', 'question'],
       },
     ],
   },
@@ -635,9 +992,16 @@ export const HELP_GROUPS: HelpGroup[] = [
         keywords: ['permissions', 'access levels', 'admin', 'editor', 'viewer', 'rto', 'planner', 'privileges'],
       },
       {
+        id: 'roles-where-shown',
+        question: 'Where do I see my role?',
+        note: 'Your role is the coloured badge just left of your avatar in the header, on every page. Click the avatar for the account menu, which shows the same badge under your name and email with a line on what that role can do.',
+        roles: 'all',
+        keywords: ['badge', 'chip', 'avatar', 'account menu', 'header', 'permissions', 'which role', 'access'],
+      },
+      {
         id: 'roles-write-assets',
         question: 'Who can add or edit terminals, kits, and contracts?',
-        note: 'The + in the app header adds a terminal, a kit or a net from any page. Add Contract is the exception - it is a button on the Contracts page itself.',
+        note: 'Admin and editor. Add Terminal and Add Kit sit in the + in the app header beside Add Net, the four Comms Library rows and Add Operation, each shown to the roles that can write it; Add Contract is the exception, a button on the Contracts page itself.',
         roles: ['admin', 'editor'],
         keywords: ['write access', 'add terminal', 'add kit', 'add contract', 'inventory'],
       },
@@ -653,17 +1017,17 @@ export const HELP_GROUPS: HelpGroup[] = [
       {
         id: 'roles-pace-write',
         question: 'Who can write nets and PACE cards?',
-        note: 'Admin, editor, RTO and planner all write nets and PACE cards. Planner exists for exactly this and writes nothing else.',
+        note: 'Admin, editor, RTO and planner all write nets and PACE cards, the transports and platforms a card plans around, and operations with the organizations that join them. Planner writes nothing beyond those, and reads everything else.',
         roles: ['admin', 'editor', 'rto', 'planner'],
         route: '/pace',
-        keywords: ['nets permissions', 'channels', 'planner'],
+        keywords: ['nets permissions', 'channels', 'planner', 'operations', 'organizations'],
       },
       {
         id: 'roles-admin-only',
         question: 'Who can manage users and read the audit log?',
-        note: 'Admin only. Neither page is offered in the page menu to any other role, and opening one by URL shows a plain refusal rather than a blank page, so the boundary is visible.',
+        note: 'Admin only. Users is offered in the page menu and Audit log as a Settings tab to an admin alone, and opening Users by URL as anyone else shows a plain refusal rather than a blank page, so the boundary is visible.',
         roles: ['admin'],
-        route: '/audit',
+        route: '/settings?tab=audit',
         gate: 'isAdmin',
         keywords: ['user management', 'audit log', 'admin only', 'history'],
       },
@@ -678,18 +1042,40 @@ export const HELP_GROUPS: HelpGroup[] = [
         keywords: ['promote', 'demote', 'permissions'],
       },
       {
+        id: 'roles-last-admin',
+        question: 'Why can I not demote the last admin?',
+        steps: ['Users'],
+        note: 'The app always keeps one admin, so demoting the only one is refused with a message to promote another user to admin first. Nobody can change their own role either, so to hand over, promote the new admin and have them change yours.',
+        tone: 'caution',
+        roles: ['admin'],
+        route: '/users',
+        gate: 'isAdmin',
+        keywords: ['last admin', 'only admin', 'hand over', 'demote admin', 'refused'],
+      },
+      {
+        id: 'audit-filter',
+        question: 'How do I find who changed a record, and when?',
+        steps: ['Settings', 'Audit log', 'Resource', 'Action'],
+        note: 'Resource narrows the log to one kind of record, from Terminals to PACE cards and Users, and Action to Create, Update, Delete or Role change; the two combine. Newest entries come first.',
+        roles: ['admin'],
+        // The tab, not /audit: that route only redirects here now.
+        route: '/settings?tab=audit',
+        gate: 'isAdmin',
+        keywords: ['audit filter', 'history', 'who changed', 'role change', 'resource', 'action'],
+      },
+      {
         id: 'roles-planner-nav',
-        question: "Why doesn't a planner see Terminals and Kits in the nav?",
-        note: 'A planner writes nets and PACE cards and reads the catalog, so those surfaces stay out of the way. Reads are still open underneath - this hides the nav entry, it does not deny anything.',
+        question: "Why don't I see Terminals and Kits in the nav?",
+        note: 'The Terminals and Kits trackers are kept by admin and editor, so for viewer, RTO and planner the page menu, the Dashboard and the sidebar leave them out, along with By Section. Reads are still open underneath - this hides the nav entry, it does not deny anything.',
         roles: 'all',
         keywords: ['planner view', 'hidden nav', 'missing menu items'],
       },
       {
         id: 'roles-contracts-nav',
         question: "Why don't I see Contracts?",
-        note: 'Contracts are internal, so only admin and editor see the sidebar group, the page-menu entry and the Dashboard panel. Reads are still open underneath - this hides the nav, it does not deny anything.',
+        note: 'Contracts are internal, so only admin and editor see the sidebar group, the page-menu entry and the Stats panel. Reads are still open underneath - this hides the nav, it does not deny anything.',
         roles: ['admin', 'editor'],
-        keywords: ['contracts hidden', 'missing contracts', 'shf only', 'hidden nav'],
+        keywords: ['contracts hidden', 'missing contracts', 'internal only', 'hidden nav'],
       },
     ],
   },

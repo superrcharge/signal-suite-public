@@ -7,11 +7,12 @@
  * the exporter reads the DOM. See the note in `sheet-export-menu.tsx` for why
  * that matters to the test suite.
  */
+import type { PaceTheater } from '@/types';
 import { datedFilename, saveBlob } from '../csv/download-csv';
 import { hideRuns, planPaceText } from './pace-text-runs';
-import { buildPptx, buildPptxSlide } from './pptx';
+import { buildPptx, buildPptxDeck, buildPptxSlide, type PptxSlide } from './pptx';
 import { rasterizeSheet } from './rasterize';
-import { sheetFontFiles } from './sheet-fonts';
+import { OPERATION_DECK_FONTS, sheetFontFiles, type FetchedFontFamily } from './sheet-fonts';
 import {
   DEFAULT_PIXEL_RATIO,
   slideImagePlacement,
@@ -186,6 +187,64 @@ async function nativeTextPptx(spec: SheetExportSpec): Promise<BuiltPptx> {
   };
 }
 
+/** What the share menu runs for its .pptx item on a page that exports a deck instead of the sheet on screen. */
+export interface SheetDeckAction {
+  /** The caption under the menu item. */
+  readonly hint: string;
+  /** Builds and downloads the deck, reporting each slide as it is started. */
+  readonly run: (onProgress: (slide: number, of: number) => void) => Promise<SheetExportResult>;
+}
+
+/**
+ * A deck of native slides: each is built as shapes, connectors and text rather
+ * than captured, so there is no picture to rasterize and nothing to mount.
+ */
+export interface NativeDeckSpec {
+  /** Filename stem, with no date and no extension. */
+  readonly stem: string;
+  readonly slide: SlideSize;
+  readonly count: number;
+  /** Builds slide `index` (from 0), laid out and ready to write. A slide names no fonts: the deck embeds them once. */
+  readonly buildSlide: (index: number) => Promise<PptxSlide>;
+  /** The deck's faces; absent, the operation deck's own, fetched from the app. */
+  readonly fonts?: () => Promise<readonly FetchedFontFamily[]>;
+}
+
+const NATIVE_FONT_WARNING =
+  'Some fonts could not be embedded, so text in the PowerPoint file may be set in another face on a machine without them.';
+
+/**
+ * Builds a deck of native slides and saves it as a .pptx.
+ *
+ * `onProgress(n, count)` fires as slide `n` (from 1) is started, slides are
+ * built sequentially, and a failure on any slide fails the export and
+ * downloads nothing: a deck missing a phase would read as complete. A face that could not be fetched is a warning on a
+ * file that was still written, because its text then draws in whatever the
+ * viewer has.
+ */
+export async function downloadNativeDeck(
+  spec: NativeDeckSpec,
+  onProgress: (slide: number, of: number) => void = () => undefined,
+): Promise<SheetExportResult> {
+  try {
+    const slides: PptxSlide[] = [];
+    for (let i = 0; i < spec.count; i++) {
+      onProgress(i + 1, spec.count);
+      slides.push(await spec.buildSlide(i));
+    }
+    const fonts = await (spec.fonts ? spec.fonts() : sheetFontFiles(undefined, OPERATION_DECK_FONTS));
+    saveBlob(
+      new Blob([buildPptxDeck(slides, { fonts }) as unknown as BlobPart], {
+        type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      }),
+      datedFilename(spec.stem, 'pptx'),
+    );
+    return { ok: true, fontWarning: fonts.length < OPERATION_DECK_FONTS.length ? NATIVE_FONT_WARNING : undefined };
+  } catch (error) {
+    return { ok: false, error: messageFrom(error) };
+  }
+}
+
 /**
  * Three gates, all of which have to hold before the clipboard is offered.
  *
@@ -247,8 +306,8 @@ export function slugify(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-export function paceStem(section: string): string {
-  return `signal-suite-pace-card-${slugify(section)}`;
+export function paceStem(section: string, theater: PaceTheater): string {
+  return `signal-suite-pace-card-${slugify(section)}-${theater}`;
 }
 
 export function compareStem(): string {
@@ -272,6 +331,18 @@ export function netsStem(label: string): string {
 export function libraryStem(label: string): string {
   const slug = slugify(label);
   return slug ? `signal-suite-${slug}-library` : 'signal-suite-library';
+}
+
+/** An operation's comms picture, one phase per slide. No `signal-suite-` prefix: the operation's own name leads. */
+export function operationStem(name: string): string {
+  const slug = slugify(name);
+  return slug ? `${slug}-comms-by-phase` : 'operation-comms-by-phase';
+}
+
+/** An operation's Matrix view: the grid of who can talk on what, whole or by phase. */
+export function operationMatrixStem(name: string): string {
+  const slug = slugify(name);
+  return slug ? `${slug}-matrix` : 'operation-matrix';
 }
 
 export function catalogStem(name: string): string {

@@ -22,6 +22,7 @@ import (
 // separate resources if they are ever wanted, not a reshaping of this one.
 type channelRow struct {
 	Section       string
+	Theater       string
 	RadioType     string
 	PlanLabel     string
 	ChannelNumber int
@@ -51,6 +52,10 @@ var csvTable = csvtable.Table[channelRow]{
 		{
 			Key: "section", Label: "Squadron",
 			Get: csvtable.Str(func(r *channelRow) string { return r.Section }),
+		},
+		{
+			Key: "theater", Label: "Theater",
+			Get: csvtable.Str(func(r *channelRow) string { return r.Theater }),
 		},
 		{
 			Key: "radio_type", Label: "Radio",
@@ -131,6 +136,7 @@ func flattenCard(card *CommsCard) []*channelRow {
 			}
 			row := &channelRow{
 				Section:       plan.Section,
+				Theater:       plan.Theater,
 				RadioType:     plan.RadioType,
 				PlanLabel:     plan.Label,
 				ChannelNumber: a.ChannelNumber,
@@ -155,6 +161,10 @@ func flattenCard(card *CommsCard) []*channelRow {
 //
 // Section is required rather than optional: a card belongs to a squadron, and
 // there is no all-squadrons card to export.
+//
+// Both theaters, CONUS rows first. The export is the squadron's whole plan and
+// the bundle route has no selector for one theater, so the file carries both
+// and the theater column says which card a row came from.
 func (s *Service) ExportChannels(ctx context.Context, section string, columns []string) (string, error) {
 	bound, err := boundCSV()
 	if err != nil {
@@ -167,9 +177,13 @@ func (s *Service) ExportChannels(ctx context.Context, section string, columns []
 	if !exists {
 		return "", ErrSectionNotFound
 	}
-	card, err := s.repo.FindCard(ctx, section)
-	if err != nil {
-		return "", ErrPaceInternalError
+	var rows []*channelRow
+	for _, theater := range ValidTheaters {
+		card, err := s.repo.FindCard(ctx, section, theater)
+		if err != nil {
+			return "", ErrPaceInternalError
+		}
+		rows = append(rows, flattenCard(card)...)
 	}
-	return bound.Export(flattenCard(card), columns)
+	return bound.Export(rows, columns)
 }

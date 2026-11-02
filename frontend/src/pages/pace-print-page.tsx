@@ -8,6 +8,8 @@ import { usePaceCard, useSections } from '@/services';
 import { LoadingSpinner } from '@/components/common';
 import { DocumentActions, paceExportSpec } from '@/components/common/sheet-export';
 import { waitForImages } from '@/utils';
+import { PACE_THEATER_LABELS } from '@/types';
+import { parseTheater, theaterSuffix } from '@/components/pace/theater';
 import '@/styles/catalog-tokens.css';
 
 // The catalog datasheet is portrait and has to be scaled to fit, so that page
@@ -20,7 +22,8 @@ const PRINT_CSS = '@media print { @page { size: letter landscape; margin: 0; } }
 export function PacePrintPage() {
   const { section } = useParams<{ section: string }>();
   const [searchParams] = useSearchParams();
-  const { data: card, isLoading, isError } = usePaceCard(section ?? '');
+  const theater = parseTheater(searchParams.get('theater'));
+  const { data: card, isLoading, isError } = usePaceCard(section ?? '', theater);
   const { data: sections } = useSections();
   const styleRef = useRef<HTMLStyleElement | null>(null);
 
@@ -138,7 +141,7 @@ export function PacePrintPage() {
             letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--shf-amber)',
             overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
-            {sectionLabel}
+            {sectionLabel} · {PACE_THEATER_LABELS[theater]}
             {card?.title && (
               <Box component="span" sx={{
                 fontFamily: 'var(--font-mono)', fontSize: 10.5,
@@ -154,8 +157,8 @@ export function PacePrintPage() {
             on mount and has no chrome at all. Share then Print, right end, as
             on every printable page (see DocumentActions). */}
         <DocumentActions
-          onPrint={() => window.open(`/pace/${section}/print?print=1`, '_blank')}
-          spec={paceExportSpec(section ?? '', sectionLabel)}
+          onPrint={() => window.open(`/pace/${section}/print?print=1${theaterSuffix(theater, '&')}`, '_blank')}
+          spec={paceExportSpec(section ?? '', sectionLabel, theater)}
         />
       </Box>
 

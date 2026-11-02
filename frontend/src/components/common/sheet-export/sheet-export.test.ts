@@ -4,6 +4,8 @@ import {
   catalogStem,
   clipboardImageSupported,
   clipboardUnavailableReason,
+  operationMatrixStem,
+  operationStem,
   paceStem,
   slugify,
 } from './sheet-export';
@@ -42,9 +44,9 @@ describe('slugify', () => {
 });
 
 describe('filename stems', () => {
-  it('names a PACE card by its squadron', () => {
-    expect(paceStem('asqd')).toBe('signal-suite-pace-card-asqd');
-    expect(paceStem('R&D')).toBe('signal-suite-pace-card-r-d');
+  it('names a PACE card by its squadron and theater', () => {
+    expect(paceStem('asqd', 'conus')).toBe('signal-suite-pace-card-asqd-conus');
+    expect(paceStem('R&D', 'oconus')).toBe('signal-suite-pace-card-r-d-oconus');
   });
 
   it('names a datasheet by its equipment, falling back when the name slugs to nothing', () => {
@@ -79,5 +81,27 @@ describe('clipboardImageSupported', () => {
   it('fails when there is no clipboard at all', () => {
     const w = fakeWindow({ navigator: {} });
     expect(clipboardImageSupported(w)).toBe(false);
+  });
+});
+
+describe('operationStem', () => {
+  it('leads with the operation, so two operations\' decks sort apart', () => {
+    expect(operationStem('Night Owl')).toBe('night-owl-comms-by-phase');
+    expect(operationStem('Op. Avalanche (2026)')).toBe('op-avalanche-2026-comms-by-phase');
+  });
+
+  it('falls back when the name slugs to nothing', () => {
+    expect(operationStem('')).toBe('operation-comms-by-phase');
+    expect(operationStem('!!!')).toBe('operation-comms-by-phase');
+  });
+});
+
+describe('operationMatrixStem', () => {
+  it('leads with the operation and says it is the matrix', () => {
+    expect(operationMatrixStem('Night Owl')).toBe('night-owl-matrix');
+  });
+
+  it('falls back when the name slugs to nothing', () => {
+    expect(operationMatrixStem('!!!')).toBe('operation-matrix');
   });
 });

@@ -59,24 +59,37 @@ export { DEFAULT_TRANSPORT_KINDS, transportKindLabel, transportKindOptions } fro
 
 export type {
   Platform,
+  Branch,
+  PlatformType,
   ListPlatformsResponse,
   CreatePlatformRequest,
   UpdatePlatformRequest,
 } from './platform';
+export { BRANCHES, BRANCH_NAMES, PLATFORM_TYPES, platformTypeLabel } from './platform';
 
-export { NET_FREQ_UNITS, NET_RADIO_TYPES, NET_RADIO_TYPE_LABELS, carriedBy } from './net';
+export {
+  NET_FREQ_UNITS,
+  NET_RADIO_TYPES,
+  NET_RADIO_TYPE_LABELS,
+  NET_THEATERS,
+  NET_THEATER_LABELS,
+  carriedBy,
+  inTheater,
+} from './net';
 export type {
   Net,
   NetFreqUnit,
   NetRadioType,
+  NetTheater,
   ListNetsResponse,
   CreateNetRequest,
   UpdateNetRequest,
 } from './net';
 
-export { PACE_RADIOS, PACE_RADIO_LABELS } from './pace';
+export { PACE_RADIOS, PACE_RADIO_LABELS, PACE_THEATERS, PACE_THEATER_LABELS } from './pace';
 export type {
   PaceRadio,
+  PaceTheater,
   PaceNetSummary,
   PaceChannel,
   PacePlan,
@@ -112,3 +125,40 @@ export type {
   CreateEquipmentRequest,
   UpdateEquipmentRequest,
 } from './equipment';
+
+export type {
+  Organization,
+  ListOrganizationsResponse,
+  CreateOrganizationRequest,
+  UpdateOrganizationRequest,
+} from './organization';
+
+export { OPERATION_STATUSES, OPERATION_STATUS_LABELS, RFI_STATUSES } from './operation';
+export type {
+  Operation,
+  OperationStatus,
+  Participant,
+  ParticipantOrganization,
+  ListOperationsResponse,
+  GetOperationResponse,
+  CreateOperationRequest,
+  UpdateOperationRequest,
+  SaveParticipantRequest,
+  AdhocOrganization,
+  CreateParticipantRequest,
+  UpdateParticipantRequest,
+  Phase,
+  PhaseRequirement,
+  Site,
+  SaveOperationPhasesRequest,
+  SaveOperationPhasesResponse,
+  SaveOperationSitesRequest,
+  SaveOperationSitesResponse,
+  SavePhasePlanRequest,
+  RFI,
+  RFIComment,
+  RFIStatus,
+  ListRFIsResponse,
+  CreateRFIRequest,
+  AddRFICommentRequest,
+} from './operation';

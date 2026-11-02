@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Box, Button, Typography } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 
 import { CONTENT_GUTTER, HEADER_HEIGHT, MainLayout } from '@/components/layouts/main-layout';
 import { CONTENT_LINE } from '@/components/common';
-import { LoadingSpinner, PageBanner, PageTitle } from '@/components/common';
+import { BANNER_BTN_AMBER_SX, BANNER_BTN_PRIMARY_SX } from '@/components/common/banner-controls';
+import { LoadingSpinner, PageBanner, PageTitle, PhotoCropModal } from '@/components/common';
 import { ChannelWheel } from '@/components/pace/ChannelWheel';
 import { TIER_SOURCE_OPTIONS, tierGap, tierGapMessage } from '@/components/pace/tier-source';
 import { PACE_TIERS, isMarked, toggleMark } from '@/components/pace/pace-constants';
 import { PaceTile } from '@/components/pace/SheetPreview';
+import { SheetHeader } from '@/components/pace/SheetHeader';
+import { TheaterSwitch } from '@/components/pace/TheaterSwitch';
+import { parseTheater, theaterQuery, withTheater } from '@/components/pace/theater';
 import { usePaceEmblem } from '@/components/pace/use-pace-emblem';
 
 // Half the sheet's 1056px page, which is the width each wheel is given when it
@@ -73,8 +79,11 @@ import {
 import { transportKindLabel } from '@/types';
 import {
   PACE_RADIOS,
+  PACE_THEATER_LABELS,
+  type PaceTheater,
   PACE_RADIO_LABELS,
   carriedBy,
+  inTheater,
   type Equipment,
   type EquipmentService,
   type EquipmentWaveform,
@@ -413,7 +422,10 @@ function TierRow({ tier, onChange }: { tier: TierDraft; onChange: (next: TierDra
         {tier.tier} - {TIER_LABELS[tier.tier]}
       </Typography>
 
-      <Box sx={rowSty}>
+      {/* No margin of its own: every field inside carries rowSty already,
+          and this wrapper used to pass the same object through sx, where a
+          bare 12 is twelve theme units - 96px of dead space under every tier. */}
+      <Box>
         <SHFSelectField
           label="Source"
           value={tier.source}
@@ -611,7 +623,15 @@ export function PaceEditorPage() {
   const { showToast } = useToast();
 
   const { data: sections } = useSections();
-  const { data: card, isLoading, isError: cardFailed } = usePaceCard(section);
+  // The card this editor was opened for. The switch below can change it, but
+  // one draft covers the whole card, so a dirty draft asks first: swapping
+  // cards underneath it discards every keystroke.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const theater = parseTheater(searchParams.get('theater'));
+  // The catalog editor's control, for the same reason it has one: on a narrow
+  // window the form is worth the whole width. Not persisted, matching it.
+  const [showPreview, setShowPreview] = useState(true);
+  const { data: card, isLoading, isError: cardFailed } = usePaceCard(section, theater);
   const { data: netData, isLoading: netsLoading, isError: netsFailed } = useNets(section);
   // For the tile preview only. React Query dedupes these against the identical
   // calls in every TierRow, so the page pays for one request each rather than
@@ -625,6 +645,8 @@ export function PaceEditorPage() {
   // off the card, so `toRequest` never carries it and a save cannot clear it.
   const uploadEmblem = useUploadPaceEmblem();
   const deleteEmblem = useDeletePaceEmblem();
+  // The picked file waits here while it is cropped; only the cropped result uploads.
+  const [emblemCropFile, setEmblemCropFile] = useState<File | null>(null);
 
   const [draft, setDraft] = useState<Draft>(() => draftFrom(undefined));
   const [dirty, setDirty] = useState(false);
@@ -648,9 +670,12 @@ export function PaceEditorPage() {
   const loadedSection = useRef<string | null>(null);
   useEffect(() => {
     if (!card) return;
-    const sameCard = loadedSection.current === card.section;
+    // The theater is part of the card's identity: the same squadron's other
+    // card is a different card, and must replace the draft.
+    const key = `${card.section}/${card.theater}`;
+    const sameCard = loadedSection.current === key;
     if (sameCard && dirtyRef.current) return;
-    loadedSection.current = card.section;
+    loadedSection.current = key;
     setDraft(draftFrom(card));
     dirtyRef.current = false;
     setDirty(false);
@@ -666,6 +691,20 @@ export function PaceEditorPage() {
   }, [dirty]);
 
   const nets = useMemo(() => netData?.nets ?? [], [netData]);
+
+  // The reload effect above keys on section/theater, so once the other card
+  // arrives it replaces the draft and clears dirty; nothing else has to.
+  const switchTheater = (next: PaceTheater) => {
+    if (
+      dirty &&
+      !window.confirm(
+        `Discard unsaved changes to the ${PACE_THEATER_LABELS[theater]} card and open the ${PACE_THEATER_LABELS[next]} one?`,
+      )
+    ) {
+      return;
+    }
+    setSearchParams(withTheater(searchParams, next), { replace: true });
+  };
 
 
   const patch = (fn: (d: Draft) => Draft) => {
@@ -683,7 +722,7 @@ export function PaceEditorPage() {
   // not browser-fetchable.
   const { emblemHref } = usePaceEmblem(section, card?.emblem_url, sectionLabel);
 
-  // Only the card-bearing squadrons resolve, so /pace/esqd - or any typo -
+  // Only the card-bearing squadrons resolve, so /pace/zsqd - or any typo -
   // does not render a full card for a section that does not have one.
   //
   // The wait is not optional. Which squadrons have a card is a column on
@@ -714,7 +753,7 @@ export function PaceEditorPage() {
     }
 
     try {
-      await saveCard.mutateAsync({ section, data: toRequest(draft) });
+      await saveCard.mutateAsync({ section, theater, data: toRequest(draft) });
       // Cleared here rather than in the reload effect, so the refetch the save
       // triggers finds a clean form and is allowed to adopt the server's copy.
       markDirty(false);
@@ -794,7 +833,12 @@ export function PaceEditorPage() {
           contained one, none of which appear anywhere else in this app. */}
       <PageBanner>
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <PageTitle noWrap>{sectionLabel} - Edit PACE card</PageTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+            <PageTitle noWrap>{sectionLabel} - Edit PACE card</PageTitle>
+            {/* Which card. The same switch the card page carries; a dirty
+                draft is asked before it lets go - see switchTheater. */}
+            <TheaterSwitch value={theater} onChange={switchTheater} />
+          </Box>
           <Typography
             sx={{
               fontFamily: 'var(--font-mono)',
@@ -810,7 +854,7 @@ export function PaceEditorPage() {
         <Button
           size="small"
           variant="outlined"
-          onClick={() => void navigate(`/pace/${section}`)}
+          onClick={() => void navigate(`/pace/${section}${theaterQuery(theater)}`)}
           sx={{
             color: 'var(--shf-amber)',
             borderColor: 'var(--shf-amber-dim)',
@@ -822,6 +866,22 @@ export function PaceEditorPage() {
         >
           {dirty ? 'Discard' : 'Back to card'}
         </Button>
+
+        {/* Toggles in place, so it never jumps rows when the preview opens or
+            closes - the catalog editor's button, for the catalog editor's
+            reason. No Tooltip: MUI promotes a title to the aria-label, and the
+            button already says what it does. */}
+          <Button
+            size="small"
+            variant={showPreview ? 'outlined' : 'contained'}
+            disableElevation
+            startIcon={showPreview ? <VisibilityOffIcon /> : <VisibilityIcon />}
+            onClick={() => { setShowPreview((v) => !v); }}
+            aria-pressed={showPreview}
+            sx={{ ...(showPreview ? BANNER_BTN_AMBER_SX : BANNER_BTN_PRIMARY_SX), flexShrink: 0 }}
+          >
+            {showPreview ? 'Hide Preview' : 'Show Preview'}
+          </Button>
 
         {/* Save is the primary action, so it carries the filled amber the
             catalog editor's Save uses, not an outline. Disabled it goes to the
@@ -875,7 +935,9 @@ export function PaceEditorPage() {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(0, 1.2fr)' },
+            gridTemplateColumns: showPreview
+              ? { xs: '1fr', lg: 'minmax(0, 1fr) minmax(0, 1.2fr)' }
+              : '1fr',
             gap: 3,
             // Bleed to the content box's edges and let each pane pad back by
             // the content line, so the first field sits under the first letter
@@ -942,7 +1004,7 @@ export function PaceEditorPage() {
               {draft.includeDate && (
                 <div style={rowSty}>
                   <label style={labelSty}>Effective date</label>
-                  {/* The one field here that is not a shared form primitive, so it
+                  {/* The one field here that is not an SHF primitive, so it
                       takes the tick beside it rather than inset. */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <input
@@ -1010,9 +1072,11 @@ export function PaceEditorPage() {
             </EditorFormSection>
 
             {/* The emblem belongs to the card header rather than to either
-                wheel, so it sits directly under the title and date. It uploads
-                on selection instead of waiting for Save: it is written by its
-                own endpoint and is never part of the card draft. */}
+                wheel, so it sits directly under the title and date. Picking a
+                file opens a round 1:1 crop, which is the wheel hub's cutout
+                exactly, and the cropped result uploads on confirm instead of
+                waiting for Save: it is written by its own endpoint and is never
+                part of the card draft. */}
             <EditorFormSection eyebrow="Section 02" title="Squadron emblem">
               {card?.emblem_url ? (
                 <div style={rowSty}>
@@ -1069,13 +1133,34 @@ export function PaceEditorPage() {
                     const file = e.target.files?.[0];
                     // Cleared so choosing the same file twice still fires.
                     e.target.value = '';
-                    void handleEmblemFile(file);
+                    if (file) setEmblemCropFile(file);
                   }}
                   onFocus={onFocus}
                   onBlur={onBlur}
                   style={inputSty}
                 />
               </div>
+              {/* No "Use Full Image": the hub would centre-crop a non-square
+                  emblem anyway, which is the uncontrolled crop this replaces.
+                  A null background keeps a transparent PNG transparent, and
+                  fillOptions lets a logo on a black or white square be zoomed
+                  inside the circle with the rest filled to match. */}
+              {emblemCropFile && (
+                <PhotoCropModal
+                  file={emblemCropFile}
+                  aspect={1}
+                  cropShape="round"
+                  title="Crop Emblem"
+                  background={null}
+                  allowFullImage={false}
+                  fillOptions
+                  onClose={() => setEmblemCropFile(null)}
+                  onConfirm={(cropped) => {
+                    setEmblemCropFile(null);
+                    void handleEmblemFile(cropped);
+                  }}
+                />
+              )}
             </EditorFormSection>
 
             {PACE_RADIOS.map((radio, i) => {
@@ -1091,7 +1176,7 @@ export function PaceEditorPage() {
               // Suffixed rather than prefixed so the list still sorts and
               // scans by net name.
               const options = nets
-                .filter((n) => carriedBy(n.radio_type, radio))
+                .filter((n) => carriedBy(n.radio_type, radio) && inTheater(n.theater, theater))
                 .map((n) => ({ value: n.id, label: n.roip ? `${n.name} (ICE)` : n.name }));
 
               return (
@@ -1457,6 +1542,7 @@ export function PaceEditorPage() {
               at over 1000px against a 580-unit viewBox, which is the "giant"
               preview. The sheet lays the two wheels across 1056px, so half that
               is the size the squadron will actually print. */}
+          {showPreview && (
           <Box
             sx={{
               background: 'var(--shf-paper)',
@@ -1488,6 +1574,18 @@ export function PaceEditorPage() {
               maxWidth: WHEEL_PREVIEW_W + TILE_PREVIEW_W + 16 + 32,
             }}
           >
+            {/* The header the sheet prints, at preview size, across both
+                columns. Before this the title and date being typed had no
+                reflection in the preview at all. */}
+            <Box sx={{ gridColumn: '1 / -1', minWidth: 0 }}>
+              <SheetHeader
+                compact
+                title={draft.title}
+                effectiveDate={draft.includeDate ? draft.effectiveDate : ''}
+                version={draft.version}
+                highlights={draft.highlights}
+              />
+            </Box>
             <Box sx={{ minWidth: 0 }}>
               {PACE_RADIOS.map((radio) => {
                 const plan = draft.plans[radio];
@@ -1550,6 +1648,7 @@ export function PaceEditorPage() {
               ))}
             </Box>
           </Box>
+          )}
         </Box>
       )}
     </MainLayout>

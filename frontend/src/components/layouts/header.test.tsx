@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 
-import { renderWithRoute, screen } from '@/test/utils';
+import { useLocation } from 'react-router';
+
+import { renderWithRoute, screen, within } from '@/test/utils';
 import { HEADER_CONTROL_H, MD_UP } from '@/components/common/header-trigger-sx';
 import { createAppTheme } from '@/theme';
 import { Header } from './header';
@@ -52,7 +54,7 @@ const { auth } = vi.hoisted(() => ({
       canWrite: true,
       canWriteRadio: true,
       canWritePace: true,
-      isPlanner: false, canSeeContracts: true,
+      isPlanner: false, canSeeContracts: true, canSeeTrackers: true,
       isAdmin: true,
       isAuthenticated: true, role: 'admin',
       user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
@@ -80,9 +82,16 @@ const openMenu = (name: 'import and export' | 'add') =>
 const item = (label: string) =>
   screen.queryByRole('menuitem', { name: new RegExp(`^${label}`, 'i') });
 
+// The words on each open Add row, in menu order. Read from the label element
+// rather than the row's textContent: the Terminal glyph is an aria-hidden
+// emoji, which a screen reader skips and textContent does not.
+const addRowLabels = () =>
+  screen.getAllByRole('menuitem').map((el) => within(el).getByText(/^Add /).textContent);
+
 // Every top-level route, plus the section-scoped and nested ones.
 const ROUTES = [
   '/dashboard',
+  '/stats',
   '/terminals',
   '/kits',
   '/contracts',
@@ -212,6 +221,23 @@ describe('Header CSV controls', () => {
     }
   });
 
+  it('sends Add Operation to the add drawer on the Operations page', async () => {
+    const Probe = () => {
+      const loc = useLocation();
+      return <output data-testid="location">{loc.pathname + loc.search}</output>;
+    };
+    renderWithRoute(
+      <>
+        <Header onMenuClick={vi.fn()} sidebarOpen sidebarWidth={240} />
+        <Probe />
+      </>,
+      '/terminals',
+    );
+    await openMenu('add');
+    await userEvent.click(item('Add Operation') as HTMLElement);
+    expect(screen.getByTestId('location')).toHaveTextContent('/operations?drawer=add');
+  });
+
   it('keeps the Add actions, which are not CSV, behind their own trigger', async () => {
     renderAt('/terminals');
     await openMenu('add');
@@ -219,8 +245,88 @@ describe('Header CSV controls', () => {
     expect(item('Add Kit')).toBeInTheDocument();
   });
 
-  it('shows a viewer Export and Template, but not Import, and no + at all', async () => {
-    auth.current = { canWrite: false, canWriteRadio: false, canWritePace: false, isPlanner: false, canSeeContracts: false, isAdmin: false, isAuthenticated: true, role: 'viewer', user: { name: 'Val', email: 'v@example.mil', roles: ['viewer'] } };
+  // The order is the order the app introduces each thing, top to bottom and
+  // left to right: the Terminals and Kits sidebar groups, the Nets Library
+  // under PACE Planning, then the Comms Library chips in chip order, and Add
+  // Operation last, as Operations is last in the sidebar. The library rows
+  // come from LIBRARIES, so this also pins that the chip row and the menu
+  // agree.
+  it('lists every Add row for an admin, in page order', async () => {
+    renderAt('/terminals');
+    await openMenu('add');
+    expect(addRowLabels()).toEqual([
+      'Add Terminal',
+      'Add Kit',
+      'Add Net',
+      'Add Waveform',
+      'Add Service',
+      'Add Transport',
+      'Add Platform',
+      'Add Operation',
+    ]);
+  });
+
+  // Each library row shows for the roles that find the add form on the pane it
+  // lands on, and no others - the pane table in authz.md. An rto writes the
+  // radio side, so Service (SATCOM reference data) is the one library it does
+  // not get; Terminal and Kit stay admin/editor.
+  it('gates each library row on the flag its pane gates on, for an rto', async () => {
+    auth.current = {
+      canWrite: false, canWriteRadio: true, canWritePace: true,
+      isAdmin: false, isPlanner: false, canSeeContracts: false, canSeeTrackers: false,
+      isAuthenticated: true, role: 'rto',
+      user: { name: 'Rae', email: 'r@example.mil', roles: ['rto'] },
+    };
+    try {
+      renderAt('/catalog');
+      await openMenu('add');
+      expect(addRowLabels()).toEqual([
+        'Add Net',
+        'Add Waveform',
+        'Add Transport',
+        'Add Platform',
+        'Add Operation',
+      ]);
+      expect(item('Add Terminal')).toBeNull();
+      expect(item('Add Kit')).toBeNull();
+      expect(item('Add Service')).toBeNull();
+    } finally {
+      auth.current = {
+        canWrite: true, canWriteRadio: true, canWritePace: true,
+        isAdmin: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
+      };
+    }
+  });
+
+  // A library row navigates, it does not open a drawer: the Comms Library's
+  // add form is inline at the top of the pane. Waveforms is the page's default
+  // chip and stays out of the URL, the same asymmetry `libraryQuery` encodes.
+  it.each([
+    ['Add Waveform', '/catalog/comms-library', ''],
+    ['Add Service', '/catalog/comms-library', '?lib=services'],
+    ['Add Transport', '/catalog/comms-library', '?lib=transports'],
+    ['Add Platform', '/catalog/comms-library', '?lib=platforms'],
+  ])('%s lands on the Comms Library with that chip pressed', async (label, pathname, search) => {
+    const Probe = () => {
+      const loc = useLocation();
+      return <output data-testid="location">{loc.pathname + loc.search}</output>;
+    };
+    renderWithRoute(
+      <>
+        <Header onMenuClick={vi.fn()} sidebarOpen sidebarWidth={240} />
+        <Probe />
+      </>,
+      '/terminals',
+    );
+    await openMenu('add');
+    const row = item(label);
+    expect(row).toBeInTheDocument();
+    await userEvent.click(row as HTMLElement);
+    expect(screen.getByTestId('location')).toHaveTextContent(pathname + search);
+  });
+
+  it('shows a viewer Export and Template, but not Import, and a + that explains itself', async () => {
+    auth.current = { canWrite: false, canWriteRadio: false, canWritePace: false, isPlanner: false, canSeeContracts: false, canSeeTrackers: false, isAdmin: false, isAuthenticated: true, role: 'viewer', user: { name: 'Val', email: 'v@example.mil', roles: ['viewer'] } };
     try {
       renderAt('/terminals');
 
@@ -234,11 +340,17 @@ describe('Header CSV controls', () => {
       expect(item('Template')).toBeInTheDocument();
       expect(item('Import')).toBeNull();
 
-      // And nothing a viewer could add, so the + is absent rather than opening
-      // an empty menu.
-      expect(screen.queryByRole('button', { name: 'add' })).not.toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+
+      // Nothing a viewer could add, so the + opens on a sentence saying so and
+      // who to ask, rather than on an empty menu or not at all. A missing
+      // button reads as a broken page; this reads as a permission boundary.
+      await openMenu('add');
+      expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+      expect(screen.getByText(/As a viewer, you’re not able to add anything/)).toBeInTheDocument();
+      expect(screen.getByText(/contact an administrator if you require higher permissions/)).toBeInTheDocument();
     } finally {
-      auth.current = { canWrite: true, canWriteRadio: true, canWritePace: true, isPlanner: false, canSeeContracts: true, isAdmin: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] } };
+      auth.current = { canWrite: true, canWriteRadio: true, canWritePace: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAdmin: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] } };
     }
   });
 
@@ -250,20 +362,31 @@ describe('Header CSV controls', () => {
       canWriteRadio: false,
       canWritePace: true,
       isAdmin: false,
-      isPlanner: true, canSeeContracts: false,
+      isPlanner: true, canSeeContracts: false, canSeeTrackers: false,
       isAuthenticated: true, role: 'planner',
       user: { name: 'Pat', email: 'p@example.mil', roles: ['planner'] },
     };
     try {
       renderAt('/pace');
 
-      // Writes it has: nets and PACE. Writes it does not: terminals and kits.
-      // A one-item menu is still a menu: the control does not change shape with
-      // the viewer's role.
+      // Writes it has: nets, PACE, operations, and the two libraries an
+      // operation or a PACE tier names - transports and platforms. Writes it
+      // does not: terminals, kits, and the two catalog libraries (waveforms
+      // are radio data, services SATCOM). Organizations have no row for
+      // anyone: they are added from the Join Operation wizard. A four-row
+      // menu is still a menu: the control does not change shape with the
+      // viewer's role.
       await openMenu('add');
-      expect(item('Add Net')).toBeInTheDocument();
+      expect(addRowLabels()).toEqual([
+        'Add Net',
+        'Add Transport',
+        'Add Platform',
+        'Add Operation',
+      ]);
       expect(item('Add Terminal')).toBeNull();
       expect(item('Add Kit')).toBeNull();
+      expect(item('Add Waveform')).toBeNull();
+      expect(item('Add Service')).toBeNull();
       await userEvent.keyboard('{Escape}');
 
       // Export and Template stay: both are reads, open to everyone.
@@ -271,19 +394,19 @@ describe('Header CSV controls', () => {
       expect(item('Export')).toBeInTheDocument();
       await userEvent.keyboard('{Escape}');
 
-      const menu = screen.getByRole('button', { name: /page navigation|PACE/i });
+      const menu = screen.getByRole('button', { name: /page navigation|SHF|PACE/i });
       await userEvent.click(menu);
 
-      for (const kept of ['Catalog', 'PACE', 'Settings']) {
+      for (const kept of ['Dashboard', 'Stats', 'Catalog', 'PACE', 'Operations', 'Settings']) {
         expect(screen.getByRole('menuitem', { name: new RegExp(kept, 'i') })).toBeInTheDocument();
       }
-      for (const hidden of ['Terminals', 'Kits', 'Contracts', 'Users', 'Dashboard']) {
+      for (const hidden of ['Terminals', 'Kits', 'Contracts', 'Users']) {
         expect(screen.queryByRole('menuitem', { name: new RegExp(`^${hidden}$`, 'i') })).toBeNull();
       }
     } finally {
       auth.current = {
         canWrite: true, canWriteRadio: true, canWritePace: true,
-        isAdmin: true, isPlanner: false, canSeeContracts: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
+        isAdmin: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
       };
     }
   });
@@ -295,17 +418,18 @@ describe('Header CSV controls', () => {
   it.each([
     ['viewer', { canWrite: false, canWriteRadio: false, canWritePace: false }],
     ['rto', { canWrite: false, canWriteRadio: true, canWritePace: true }],
-  ])('hides Contracts from the page menu for a %s', async (role, writes) => {
+  ])('hides Contracts and the trackers from the page menu for a %s', async (role, writes) => {
     auth.current = {
-      ...writes, isAdmin: false, isPlanner: false, canSeeContracts: false,
+      ...writes, isAdmin: false, isPlanner: false, canSeeContracts: false, canSeeTrackers: false,
       isAuthenticated: true, role, user: { name: 'Rae', email: 'r@example.mil', roles: [role] },
     };
     try {
-      renderAt('/terminals');
-      await userEvent.click(screen.getByRole('button', { name: /page navigation|Terminals/i }));
+      renderAt('/catalog');
+      await userEvent.click(screen.getByRole('button', { name: /page navigation|SHF|Catalog/i }));
 
-      expect(screen.getByRole('menuitem', { name: /^Terminals$/i })).toBeInTheDocument();
-      expect(screen.getByRole('menuitem', { name: /^Kits$/i })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /^Stats$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /^Terminals$/i })).toBeNull();
+      expect(screen.queryByRole('menuitem', { name: /^Kits$/i })).toBeNull();
       expect(screen.queryByRole('menuitem', { name: /^Contracts$/i })).toBeNull();
       // The two pages whose reads the server refuses below admin.
       expect(screen.queryByRole('menuitem', { name: /^Users$/i })).toBeNull();
@@ -313,19 +437,30 @@ describe('Header CSV controls', () => {
     } finally {
       auth.current = {
         canWrite: true, canWriteRadio: true, canWritePace: true,
-        isAdmin: true, isPlanner: false, canSeeContracts: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
+        isAdmin: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
       };
     }
   });
 
+  // The audit log's one home is Settings, Audit log; /audit only redirects
+  // there. Even an admin, who can read it, gets no page-picker row for it.
+  it('offers no Audit Log row in the page menu, even to an admin', async () => {
+    renderAt('/terminals');
+    await userEvent.click(screen.getByRole('button', { name: /page navigation|SHF|Terminals/i }));
+
+    expect(screen.getByRole('menuitem', { name: /^Users$/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^Settings$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /^Audit Log$/i })).toBeNull();
+  });
+
   it('shows Contracts to an editor and keeps Users and Audit Log admin-only', async () => {
     auth.current = {
-      canWrite: true, canWriteRadio: true, canWritePace: true, isAdmin: false, isPlanner: false, canSeeContracts: true,
+      canWrite: true, canWriteRadio: true, canWritePace: true, isAdmin: false, isPlanner: false, canSeeContracts: true, canSeeTrackers: true,
       isAuthenticated: true, role: 'editor', user: { name: 'Ed', email: 'e@example.mil', roles: ['editor'] },
     };
     try {
       renderAt('/terminals');
-      await userEvent.click(screen.getByRole('button', { name: /page navigation|Terminals/i }));
+      await userEvent.click(screen.getByRole('button', { name: /page navigation|SHF|Terminals/i }));
 
       expect(screen.getByRole('menuitem', { name: /^Contracts$/i })).toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: /^Users$/i })).toBeNull();
@@ -333,7 +468,7 @@ describe('Header CSV controls', () => {
     } finally {
       auth.current = {
         canWrite: true, canWriteRadio: true, canWritePace: true,
-        isAdmin: true, isPlanner: false, canSeeContracts: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
+        isAdmin: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAuthenticated: true, role: 'admin', user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
       };
     }
   });
@@ -363,7 +498,7 @@ describe('Header role display', () => {
     // as an uppercase pill.
     auth.current = {
       canWrite: true, canWriteRadio: true, canWritePace: true,
-      isAdmin: true, isPlanner: false, canSeeContracts: true, isAuthenticated: true, role: 'admin',
+      isAdmin: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAuthenticated: true, role: 'admin',
       user: { name: 'Legacy', email: 'l@example.mil', roles: ['Legacy-Ops-Group', 'editor'] },
     };
     try {
@@ -375,24 +510,24 @@ describe('Header role display', () => {
     } finally {
       auth.current = {
         canWrite: true, canWriteRadio: true, canWritePace: true,
-        isAdmin: true, isPlanner: false, canSeeContracts: true, isAuthenticated: true, role: 'admin',
+        isAdmin: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAuthenticated: true, role: 'admin',
         user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
       };
     }
   });
 
   it('describes a viewer as a viewer', async () => {
-    auth.current = { canWrite: false, canWriteRadio: false, canWritePace: false, isPlanner: false, canSeeContracts: false, isAdmin: false, isAuthenticated: true, role: 'viewer', user: { name: 'Val', email: 'v@example.mil', roles: ['viewer'] } };
+    auth.current = { canWrite: false, canWriteRadio: false, canWritePace: false, isPlanner: false, canSeeContracts: false, canSeeTrackers: false, isAdmin: false, isAuthenticated: true, role: 'viewer', user: { name: 'Val', email: 'v@example.mil', roles: ['viewer'] } };
     try {
       renderAt('/terminals');
       expect(screen.getByLabelText('your role: viewer')).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('button', { name: 'account menu' }));
-      expect(screen.getByText('Reads everything; no writes')).toBeInTheDocument();
+      expect(screen.getByText('Reads everything; no writes (default view)')).toBeInTheDocument();
     } finally {
       auth.current = {
         canWrite: true, canWriteRadio: true, canWritePace: true,
-        isAdmin: true, isPlanner: false, canSeeContracts: true, isAuthenticated: true, role: 'admin',
+        isAdmin: true, isPlanner: false, canSeeContracts: true, canSeeTrackers: true, isAuthenticated: true, role: 'admin',
         user: { name: 'Tester', email: 't@example.mil', roles: ['admin'] },
       };
     }
@@ -411,14 +546,19 @@ describe('Header theme toggle', () => {
 });
 
 /**
- * The lockup is static and unconditional: not a link, not behind auth, on
- * every route. A wordmark that vanished for a signed-out user, or on one
- * page, would read as the app having lost its name there.
+ * The lockup is unconditional: not behind auth, on every route. A wordmark
+ * that vanished for a signed-out user, or on one page, would read as the app
+ * having lost its name there. It is also the link home, to the Dashboard.
  */
 describe('Header identity', () => {
   it.each(ROUTES)('carries the Signal Suite lockup at %s', (route) => {
     renderAt(route);
     expect(screen.getByRole('img', { name: 'Signal Suite' })).toBeInTheDocument();
+  });
+
+  it('links the lockup to the Dashboard', () => {
+    renderAt('/kits');
+    expect(screen.getByRole('link', { name: /Signal Suite - go to Dashboard/ })).toHaveAttribute('href', '/dashboard');
   });
 
   it('keeps the lockup when nobody is signed in', () => {

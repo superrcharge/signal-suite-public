@@ -4,7 +4,12 @@ Global Services Library - a centrally managed reference table of SATCOM services
 
 The SATCOM-side twin of the Waveform Library. Read `waveform.md` first if you have not - this file documents mainly where the two differ, and they differ in three places that matter.
 
-**`name` is printed on PACE comms cards.** A tier tile spells the service out - "Inmarsat Global Express", not "GX" - reading `name` from the equipment record's own services snapshot, so editing a service's full name here changes what a squadron's printed sheet says. `abbrev` is still what the catalog datasheet's narrow Service column prints, and is unaffected. There is no separate vendor field: the operator is conventionally the prefix of `name`, which is what the editor's own "Inmarsat Global Express" placeholder documents. See `pace.md`.
+**`name` is not what a PACE comms card prints.** A tier tile prints the abbreviation, `tier.service_abbrev` (`components/pace/SheetPreview.tsx`) - "GX", not "Inmarsat Global Express" - because it is what the operators reading the card call it and the one form that fits the tile without a wrap.
+The spelled-out name appears in the PACE editor's Service picker instead, which renders `GX - Inmarsat Global Express` from the equipment record's own services snapshot, so the editor is where the acronym is learned and the card is where it is read.
+`abbrev` is also what the catalog datasheet's narrow Service column prints.
+There is still no separate vendor field: the operator is conventionally the prefix of `name`, which is what the editor's own "Inmarsat Global Express" placeholder documents. See `pace.md`.
+
+**`owned_by` and `owner_country` are a different fact from the operator** (migration `043_add_library_owner.sql`). The operator is who you buy from; the owner is who ultimately controls that operator, and for a DoD reader the two diverge in exactly the cases that matter - OneWeb is operated as OneWeb and owned by Eutelsat, a French company, and every Inmarsat product has been Viasat's since 2023. `owned_by` is the ultimate controlling parent, the company itself when nothing controls it, or the government body for a state system such as MUOS; `owner_country` is where that owner is headquartered. Both are optional and free text. Shareholdings and pending deals are prose and go in `description`, which is why there is no third field. Neither is copied into the equipment record's services snapshot: ownership is read from the library, and nothing printed on a PACE card depends on it.
 
 ## Backend
 
@@ -16,6 +21,8 @@ CREATE TABLE services (
   abbrev      TEXT NOT NULL,
   name        TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
+  owned_by      TEXT NOT NULL DEFAULT '',   -- 043
+  owner_country TEXT NOT NULL DEFAULT '',   -- 043
   created_by  TEXT NOT NULL DEFAULT '',
   updated_by  TEXT NOT NULL DEFAULT '',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -81,14 +88,16 @@ interface Service {
   abbrev: string;
   name: string;
   description: string;
+  owned_by: string;
+  owner_country: string;
   created_by: string;
   updated_by: string;
   created_at: string;
   updated_at: string;
 }
 interface ListServicesResponse { services: Service[]; total: number; }
-interface CreateServiceRequest { abbrev: string; name?: string; description?: string; }
-interface UpdateServiceRequest { abbrev?: string; name?: string; description?: string; }
+interface CreateServiceRequest { abbrev: string; name?: string; description?: string; owned_by?: string; owner_country?: string; }
+interface UpdateServiceRequest { abbrev?: string; name?: string; description?: string; owned_by?: string; owner_country?: string; }
 ```
 
 `Service` (library entry) sits beside the pre-existing `EquipmentService` (per-terminal copy) exactly as `Waveform` sits beside `EquipmentWaveform`.
@@ -125,7 +134,10 @@ equipment pool, so a service nothing offers never appears.
 **Service Library pane** (`components/catalog/ServiceLibraryPane.tsx`, mounted by `/catalog/comms-library`):
 - It used to live inside `catalog-editor-page.tsx`, reached by a ⊞ button below the waveform one that swapped it into the centre column. Both buttons and the `EditorPanel` state behind them are gone; the pane is now a component of its own on the Comms Library route. See `equipment.md`'s "The Comms Library" section.
 - **The pane's write controls gate on `canWrite`, and the pane itself does not.** This was the one place the frontend was looser than the backend: the editor admits an `rto` writer because `POST /api/v1/equipment` does, and that role then reached a working-looking `+ Add Service` and per-row ✎ / ✕ that `satcomservice/routes.go` rejects with a 403. It now reads the library and writes nothing in it. The gate is `canWrite` rather than the editor's `canEditDraft` - a draft's `terminal_type` says nothing about who may edit global SATCOM reference data - and self-gating is what lets the Comms Library route be open to everyone.
-- Full list of services with inline create / edit / delete, a search box over abbrev, name and description, and the Add form above the list; abbrev is the canonical identifier. The inputs carry `maxLength` (`SERVICE_ABBREV_MAX` / `SERVICE_NAME_MAX` / `SERVICE_DESC_MAX`, matching the DTO's `max=50` / `100` / `250`), so a field stops accepting characters rather than the save being rejected.
+- The header's `+` menu carries an **Add Service** row gated on the same `canWrite`, navigating to `/catalog/comms-library?lib=services`. It is the one library row an `rto` does not see, for the reason in Difference 1 above.
+- Full list of services with inline create / edit / delete, a search box over abbrev, name, owner, owner country and description, and the Add form above the list; abbrev is the canonical identifier. The inputs carry `maxLength` (`SERVICE_ABBREV_MAX` / `SERVICE_NAME_MAX` / `SERVICE_OWNED_BY_MAX` / `SERVICE_COUNTRY_MAX` / `SERVICE_DESC_MAX`, matching the DTO's `max=50` / `100` / `120` / `60` / `250`), so a field stops accepting characters rather than the save being rejected.
+- Ownership is one `OwnerCell` column at `md` and up - owner over country, two lines to match `NameAndDesc` so a row stays one height - and one `MetaLine` beneath the row below `md`, with the usage strip.
+- **A save sends only the fields the edit changed**, so an edit opened on a stale page cannot write back over a field someone else saved since. The mechanism lives in the shared pane; see `equipment.md`'s "The Comms Library" section.
 - Section 03 of SATCOM equipment uses **toggle chips** sourced from this library. Toggling on appends `{ abbrev, name, description }` copied from the library entry; toggling off filters by abbrev.
 - **Difference 3 - chip matching is case-insensitive**, unlike the waveform chips, which compare `abbrev` exactly. The backfill keeps only one spelling per abbrev, so an exact test would report a terminal that typed "gx" as an orphan of the library's "GX". Both the active test and both filters normalize with `trim().toLowerCase()`.
 - **Orphan chips:** an abbrev in `data.services` with no library match renders as a dim gray chip with an ✕, same as waveforms.
@@ -158,6 +170,8 @@ Independent at the DB level, exactly like waveforms: the link is the `abbrev` st
 **`equipment.data.services[]` did not change shape.** Same five keys, same optionality, same order. Only the way it gets populated changed, from typing to checking a chip. That is what keeps `HeroBlock`'s 4-column `Service / Description / CIR / MIR` table, the paper-colored quick-ID chips in `BrowseGrid`, and the catalog search haystack rendering exactly as before - none of them were touched, and `HeroBlock.test.tsx` passes unmodified as the proof.
 
 See `equipment.md` for the PATCH `data` full-replace gotcha: a script that PATCHes only `{"data":{"services":[…]}}` erases bands, specs, swap, and features.
+
+Operation participants store `waveform_abbrevs`, `service_abbrevs` and `transport_ids` by value (columns on `operation_participants`), and the library delete guards do not check them, so removing an entry here leaves a participant pointing at it. See `operation.md`.
 
 ## CSV export / import
 

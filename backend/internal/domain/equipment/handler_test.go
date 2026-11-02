@@ -12,6 +12,9 @@ import (
 	"slices"
 	"testing"
 
+	"backend/internal/middleware"
+	"backend/internal/shared/contracts"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -129,4 +132,187 @@ func TestUploadPhotoKeepsNewBlobAndDropsOldOnSuccess(t *testing.T) {
 			t.Errorf("the newly uploaded blob %q was deleted on a successful upload", d)
 		}
 	}
+}
+
+// ─── DeletePhoto ─────────────────────────────────────────────────────────────
+
+// photoActor is the minimum AuthUser the handler reads roles from.
+type photoActor struct{ roles []string }
+
+func (a photoActor) GetID() string   { return "u-1" }
+func (a photoActor) GetName() string { return "Test Actor" }
+func (a photoActor) HasRole(role string) bool {
+	return slices.Contains(a.roles, role)
+}
+
+// The route gate is not under test here - TestGatesPrecedeHandlers covers it -
+// so a nil actor stands for "auth disabled" and a non-nil one is attached the
+// way RequireAuth would.
+func deletePhotoApp(h *Handler, actor middleware.AuthUser) *fiber.App {
+	app := fiber.New()
+	app.Delete("/api/v1/equipment/:id/photo", func(c fiber.Ctx) error {
+		if actor != nil {
+			c.Locals(middleware.UserLocalsKey, actor)
+		}
+		return h.DeletePhoto(c)
+	})
+	return app
+}
+
+type deletePhotoFixture struct {
+	handler *Handler
+	store   *mockPhotoStore
+	saved   []*Equipment // every row UpdateEquipment persisted
+	audit   *auditLog
+}
+
+type auditLog struct{ events []contracts.AuditEventInput }
+
+func (a *auditLog) Record(_ context.Context, in contracts.AuditEventInput) {
+	a.events = append(a.events, in)
+}
+
+func newDeletePhotoFixture(t *testing.T, item *Equipment, withBlob bool) *deletePhotoFixture {
+	t.Helper()
+	f := &deletePhotoFixture{store: &mockPhotoStore{}, audit: &auditLog{}}
+	repo := &MockRepository{
+		FindByIDFunc: func(_ context.Context, id string) (*Equipment, error) {
+			if item == nil || id != item.ID {
+				return nil, ErrEquipmentNotFound
+			}
+			return item, nil
+		},
+		UpdateFunc: func(_ context.Context, e *Equipment) error {
+			row := *e
+			f.saved = append(f.saved, &row)
+			return nil
+		},
+	}
+	svc := NewService(repo)
+	svc.SetAudit(f.audit)
+	var store PhotoStore
+	if withBlob {
+		svc.SetBlobStore(f.store)
+		store = f.store
+	}
+	f.handler = NewHandler(svc, NewValidator(), store)
+	return f
+}
+
+func deletePhoto(t *testing.T, app *fiber.App, id string) int {
+	t.Helper()
+	resp, err := app.Test(httptest.NewRequest(http.MethodDelete, "/api/v1/equipment/"+id+"/photo", nil))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestDeletePhoto(t *testing.T) {
+	withPhoto := func(terminalType string) *Equipment {
+		return &Equipment{ID: "eq-1", Nomenclature: "AN/PRC-117G", TerminalType: terminalType, PhotoURL: strPtr(photoOld)}
+	}
+
+	t.Run("501 when blob storage is not configured", func(t *testing.T) {
+		f := newDeletePhotoFixture(t, withPhoto(TerminalTypeRadio), false)
+
+		if got := deletePhoto(t, deletePhotoApp(f.handler, nil), "eq-1"); got != http.StatusNotImplemented {
+			t.Errorf("status = %d, want %d", got, http.StatusNotImplemented)
+		}
+		if len(f.saved) != 0 {
+			t.Errorf("the row was written %d times with no blob store to clean up after it", len(f.saved))
+		}
+	})
+
+	// The body has to say what the status says. A bare errors.New renders as
+	// INTERNAL_ERROR / "internal server error" through the shared envelope, so a
+	// dev box with no storage used to report its 501 as a server fault.
+	t.Run("501 body names the missing storage, not an internal error", func(t *testing.T) {
+		f := newDeletePhotoFixture(t, withPhoto(TerminalTypeRadio), false)
+		resp, err := deletePhotoApp(f.handler, nil).Test(httptest.NewRequest(http.MethodDelete, "/api/v1/equipment/eq-1/photo", nil))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if !bytes.Contains(body, []byte(ErrPhotoStorageNotConfigured.Code)) || bytes.Contains(body, []byte("INTERNAL_ERROR")) {
+			t.Errorf("body = %s, want code %s", body, ErrPhotoStorageNotConfigured.Code)
+		}
+	})
+
+	t.Run("404 when the record does not exist", func(t *testing.T) {
+		f := newDeletePhotoFixture(t, withPhoto(TerminalTypeRadio), true)
+
+		if got := deletePhoto(t, deletePhotoApp(f.handler, nil), "missing"); got != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", got, http.StatusNotFound)
+		}
+	})
+
+	t.Run("404 when the record has no photo", func(t *testing.T) {
+		item := withPhoto(TerminalTypeRadio)
+		item.PhotoURL = nil
+		f := newDeletePhotoFixture(t, item, true)
+
+		if got := deletePhoto(t, deletePhotoApp(f.handler, nil), "eq-1"); got != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", got, http.StatusNotFound)
+		}
+		if len(f.saved) != 0 || len(f.store.deleted) != 0 {
+			t.Errorf("saved %d rows and deleted %v for a record with nothing to remove", len(f.saved), f.store.deleted)
+		}
+	})
+
+	t.Run("an rto caller is refused on a satcom record, and nothing moves", func(t *testing.T) {
+		f := newDeletePhotoFixture(t, withPhoto(TerminalTypeSATCOM), true)
+
+		got := deletePhoto(t, deletePhotoApp(f.handler, photoActor{roles: []string{roleRTO}}), "eq-1")
+		if got != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", got, http.StatusForbidden)
+		}
+		if len(f.saved) != 0 || len(f.store.deleted) != 0 {
+			t.Errorf("a refused removal still saved %d rows and deleted %v", len(f.saved), f.store.deleted)
+		}
+	})
+
+	// The refusal above would pass if the handler refused rto outright.
+	t.Run("an rto caller may remove a radio record's photo", func(t *testing.T) {
+		f := newDeletePhotoFixture(t, withPhoto(TerminalTypeRadio), true)
+
+		got := deletePhoto(t, deletePhotoApp(f.handler, photoActor{roles: []string{roleRTO}}), "eq-1")
+		if got != http.StatusNoContent {
+			t.Errorf("status = %d, want %d", got, http.StatusNoContent)
+		}
+	})
+
+	t.Run("success clears photo_url and deletes the blob", func(t *testing.T) {
+		f := newDeletePhotoFixture(t, withPhoto(TerminalTypeSATCOM), true)
+
+		got := deletePhoto(t, deletePhotoApp(f.handler, photoActor{roles: []string{roleAdmin}}), "eq-1")
+		if got != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d", got, http.StatusNoContent)
+		}
+		if len(f.saved) != 1 {
+			t.Fatalf("saved %d rows, want exactly one", len(f.saved))
+		}
+		// NULL, not "": the column has one representation of "no photo".
+		if f.saved[0].PhotoURL != nil {
+			t.Errorf("photo_url = %q, want NULL", *f.saved[0].PhotoURL)
+		}
+		if !slices.Equal(f.store.deleted, []string{"old.jpg"}) {
+			t.Errorf("deleted = %v, want [old.jpg]", f.store.deleted)
+		}
+		// Recorded as an ordinary update whose diff names the photo, the same
+		// entry a replacement writes.
+		if len(f.audit.events) != 1 {
+			t.Fatalf("audit events = %d, want 1", len(f.audit.events))
+		}
+		ev := f.audit.events[0]
+		if ev.Action != "update" || ev.ActorName != "Test Actor" {
+			t.Errorf("audit = %s by %q, want update by %q", ev.Action, ev.ActorName, "Test Actor")
+		}
+		want := map[string]any{"old": photoOld, "new": ""}
+		if got, ok := ev.Changes["photo_url"].(map[string]any); !ok || got["old"] != want["old"] || got["new"] != want["new"] {
+			t.Errorf("audit photo_url change = %v, want %v", ev.Changes["photo_url"], want)
+		}
+	})
 }

@@ -19,7 +19,7 @@
 //   node scripts/plan-status.mjs started   <plan-path> "reading the plan"
 //   node scripts/plan-status.mjs step      <plan-path> "4 of 8 - files read"
 //   node scripts/plan-status.mjs blocked   <plan-path> "em dash gate fails on the plan itself"
-//   node scripts/plan-status.mjs committed <plan-path> "abc1234 fix(pace): editor polish"
+//   node scripts/plan-status.mjs committed <plan-path> "1c01716 fix(pace): editor polish"
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'

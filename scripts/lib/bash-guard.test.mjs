@@ -306,12 +306,12 @@ for (const cmd of [
   // A `>` inside quotes is never a redirect operator.
   `gh issue list --jq '.[] | select(.closedAt > "2026-09-05")'`,
   `grep -n "a > b" README.md`,
-  `echo "GHCR > ACR"`,
+  `echo "GHCR > REG ACR"`,
   `jq '.items[] | select(.count > 3)' data.json`,
   `git log --format="%h > %s"`,
   // An escaped operator outside quotes is not one either.
   `echo a \\> b`,
-  // The shapes actually typed, not idealised ones. An earlier change shipped a defect
+  // The shapes actually typed, not idealised ones. #202 shipped a defect
   // because its tests used bare commands while every real command carries a
   // redirection or a pipe, so the tests and the code were blind in the same
   // place. These are the literal strings that were denied on 2026-09-05.

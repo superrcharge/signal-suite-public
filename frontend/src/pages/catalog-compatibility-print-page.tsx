@@ -1,29 +1,31 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router';
 import { usePlatforms, useEquipment, useWaveforms } from '@/services';
 import { buildMatrix } from '@/components/catalog/compat-matrix-model';
 import { readMatrixParams, writeMatrixParams } from '@/components/catalog/compat-matrix-params';
-import { JointCompatibilityMatrix } from '@/components/catalog/JointCompatibilityMatrix';
-import { PrintPageShell } from '@/components/common/sheet-export';
-
-function nextFrame(): Promise<void> {
-  return new Promise(resolve => { requestAnimationFrame(() => { resolve(); }); });
-}
+import { MatrixPrintPreview } from '@/components/catalog/matrix-print-preview';
+import '@/styles/catalog-tokens.css';
 
 /**
- * The joint matrix, chrome free, for print and Save as PDF. Landscape because
- * the matrix grows sideways with every asset added.
+ * The joint matrix, chrome free, for print and Save as PDF - and, short of
+ * that, a preview of exactly the pages a printer will produce. Built the way
+ * `/catalog/compare/print` is, and sharing its paper, margins, page split
+ * rules and Fit to one page:
  *
- * It reads the live page's URL parameters, so the sheet is whatever the reader
- * had on screen, with one difference - empty rows are always dropped, because
- * paper should not spend a page on waveforms nothing in the selection carries.
- * `?print=1` opens the dialog once the data and fonts are in, which is also
- * what a DevTools-driven print check waits for.
+ * - Columns past what one page holds continue on another page across, with
+ *   the waveform labels repeated; rows past one page continue down, with the
+ *   header row repeated. `useMatrixPrintPagination` decides every break.
+ * - Fit (`fit=1`, shared with the live page) zooms the whole sheet so it
+ *   lands on one page when it can, floor 70%, with CSS `zoom` - never a
+ *   transform, which print would still paginate at the unscaled size.
+ * - `print=1` renders the pages alone and opens the dialog once the data,
+ *   the fonts and the measurement are in; without it, the preview.
+ *
+ * Empty rows are always dropped here: paper should not spend a page on
+ * waveforms nothing in the selection carries.
  */
 export function CatalogCompatibilityPrintPage() {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const printedRef = useRef(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: pData, isLoading: pLoading, isError: pError } = usePlatforms();
   const { data: eData, isLoading: eLoading, isError: eError } = useEquipment({ type: 'radio' });
@@ -40,28 +42,6 @@ export function CatalogCompatibilityPrintPage() {
     omitEmptyRows: true,
   }), [pData, eData, wData, params]);
 
-  const wantsPrint = searchParams.get('print') === '1';
-
-  const printNow = () => {
-    void document.fonts.ready.then(() => nextFrame()).then(() => { window.print(); });
-  };
-
-  useEffect(() => {
-    if (!wantsPrint || !ready || printedRef.current) return;
-    let cancelled = false;
-    void document.fonts.ready
-      .then(() => nextFrame())
-      .then(() => nextFrame())
-      .then(() => {
-        if (cancelled || printedRef.current) return;
-        // Marked at the moment of printing, not when the chain starts, so a
-        // StrictMode remount cannot be told it already printed.
-        printedRef.current = true;
-        window.print();
-      });
-    return () => { cancelled = true; };
-  }, [wantsPrint, ready]);
-
   const backHref = useMemo(() => {
     const next = writeMatrixParams(new URLSearchParams(paramKey), {});
     next.delete('print');
@@ -69,31 +49,26 @@ export function CatalogCompatibilityPrintPage() {
     return `/catalog/compatibility${qs ? `?${qs}` : ''}`;
   }, [paramKey]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const toggleFit = () => {
+    setSearchParams(writeMatrixParams(searchParams, { fit: !params.fit }), { replace: true });
+  };
+
+  const openPrint = () => {
+    const printParams = new URLSearchParams(searchParams);
+    printParams.set('print', '1');
+    window.open(`/catalog/compatibility/print?${printParams.toString()}`, '_blank');
+  };
 
   return (
-    <PrintPageShell
-      orientation="landscape"
-      rootAttr="data-compat-print-root"
-      backLabel="Back"
-      onBack={() => { void navigate(backHref); }}
-      onPrint={printNow}
-      printDisabled={!ready}
-      // The matrix prints on its own paper, unlike the dark library and nets sheets.
-      rootStyle={{ background: 'var(--shf-paper)', color: 'var(--fg-1)', padding: 24 }}
-    >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            Joint Compatibility Matrix
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
-            {today}{params.categories.length > 0 ? ` · ${params.categories.join(', ').toUpperCase()}` : ''}
-          </div>
-        </div>
-        <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--fg-2)', marginBottom: 12 }}>
-          {!ready ? 'Loading…' : null}
-        </div>
-        {ready && <JointCompatibilityMatrix model={model} print />}
-    </PrintPageShell>
+    <MatrixPrintPreview
+      model={model}
+      params={params}
+      ready={ready}
+      title="Compatibility: print preview"
+      backHref={backHref}
+      onToggleFit={toggleFit}
+      onPrint={openPrint}
+      print={searchParams.get('print') === '1'}
+    />
   );
 }

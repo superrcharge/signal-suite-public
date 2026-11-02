@@ -21,7 +21,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import {
-  LoadingSpinner, EmptyState, RoleBadge, PageBanner, PageTitle, PageSubtitle,
+  LoadingSpinner, EmptyState, RoleBadge, PageBanner, PageTitle,
   StatStrip, StatCell, PANEL_SX, TABLE_HEAD_SX, ROW_HOVER_SX,
 } from '@/components/common';
 import { MainLayout } from '@/components/layouts';
@@ -162,10 +162,7 @@ export function UsersPage() {
   return (
     <MainLayout>
       <PageBanner variant="plain">
-        <PageTitle sx={{ minWidth: 0, mb: 1.5 }}>
-          Users &amp; Roles
-          <PageSubtitle>everyone who signs in appears here. New accounts default to Viewer.</PageSubtitle>
-        </PageTitle>
+        <PageTitle visuallyHidden>Users &amp; Roles</PageTitle>
         {/* Role counts. Non-interactive: unlike the terminals and kits strips
             there is no role filter on the users list for a cell to drive, so
             these carry no hover or cursor affordance - `StatCell` draws one

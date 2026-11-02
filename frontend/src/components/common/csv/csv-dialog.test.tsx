@@ -15,6 +15,7 @@ vi.mock('@/services', () => ({
     ],
   }),
   useContractFiscalYears: () => ({ data: ['FY26', 'FY27'] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
 function csvResponse() {

@@ -19,6 +19,7 @@ import { useCsvImport } from '@/services/csv-service';
 import { CSV_DOMAINS, CSV_DOMAIN_ORDER, withSection, type CsvResource } from './csv-domains';
 import { CsvImportResultDialog, type CsvImportResult } from './csv-import-result-dialog';
 import { squadronsFor } from './csv-selection';
+import { importErrorMessage } from './import-error-message';
 import { useCsvFacetOptions } from './use-csv-facet-options';
 import { useCsvWriteGate } from './use-csv-write-gate';
 
@@ -104,8 +105,8 @@ export function CsvImportDialog({ preselect, section, onClose }: CsvImportDialog
       }
       // Anything skipped opens the result dialog. A toast cannot show eight bad rows.
       setResult(imported);
-    } catch {
-      showToast('Import failed. Please try again.', { severity: 'error' });
+    } catch (err) {
+      showToast(importErrorMessage(err), { severity: 'error' });
     }
   };
 

@@ -122,7 +122,7 @@ func TestUpdateKit_BooleanDiff(t *testing.T) {
 	req := &dto.UpdateKitRequest{
 		ID:        existing.ID,
 		Black:     boolPtr(false),
-		Secret:     boolPtr(true),
+		Secret:    boolPtr(true),
 		UpdatedBy: "tester",
 	}
 	resp := &dto.UpdateKitResponse{}

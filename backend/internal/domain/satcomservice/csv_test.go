@@ -12,7 +12,7 @@ import (
 
 // The full column list, written out by hand. This literal IS the pin.
 var wantColumns = []string{
-	"id", "abbrev", "name", "description",
+	"id", "abbrev", "name", "owned_by", "owner_country", "description",
 	"created_by", "updated_by", "updated_at", "created_at",
 }
 
@@ -30,6 +30,7 @@ func csvSampleService() *SatcomService {
 	return &SatcomService{
 		ID: "550e8400-e29b-41d4-a716-446655440000", Abbrev: "EXSVC",
 		Name: "Example Service", Description: "A note with a comma, and \"quotes\"",
+		OwnedBy: "Example Holdings, Inc.", OwnerCountry: "United States",
 		CreatedBy: "tester", UpdatedBy: "tester", CreatedAt: at, UpdatedAt: at,
 	}
 }

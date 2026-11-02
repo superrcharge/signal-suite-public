@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,11 +13,13 @@ import (
 
 type Repository interface {
 	SectionExists(ctx context.Context, section string) (bool, error)
-	FindCard(ctx context.Context, section string) (*CommsCard, error)
+	FindCard(ctx context.Context, section, theater string) (*CommsCard, error)
 	SaveCard(ctx context.Context, card *CommsCard) error
 	// SetEmblemURL writes only the emblem column. The card save is a whole-card
 	// replace and never carries the emblem, so writing it through that path
-	// would clear an emblem the editor was never holding.
+	// would clear an emblem the editor was never holding. The emblem is the
+	// squadron's, not one card's, so it takes no theater and writes every
+	// theater row.
 	SetEmblemURL(ctx context.Context, section, url string) error
 	// CountAssignmentsForNet answers "is this net on any wheel?", which is what
 	// turns a blocked net delete into a message naming the wheels.
@@ -67,34 +70,35 @@ func (r *PostgresRepository) SectionHasData(ctx context.Context, section string)
 
 // FindCard reads both wheels and every assignment in two queries, joining nets
 // so the caller never has to resolve references itself.
-func (r *PostgresRepository) FindCard(ctx context.Context, section string) (*CommsCard, error) {
+func (r *PostgresRepository) FindCard(ctx context.Context, section, theater string) (*CommsCard, error) {
 	card := &CommsCard{
 		Section:    section,
+		Theater:    theater,
 		Plans:      []*ChannelPlan{},
 		LTACRows:   []*FreqRow{},
 		TACSATRows: []*FreqRow{},
-		TmnRows: []*TmnRow{},
+		TmnRows:    []*TmnRow{},
 	}
 
 	// Header is optional: a squadron that has never saved has no row, and the
 	// service scaffolds an empty one rather than treating that as an error.
-	hdr := &CardHeader{Section: section}
+	hdr := &CardHeader{Section: section, Theater: theater}
 	err := r.db.QueryRow(ctx, `
 		SELECT id, title, effective_date, emblem_url, version, highlights, updated_by
-		FROM pace_plans WHERE section = $1`, section,
+		FROM pace_plans WHERE section = $1 AND theater = $2`, section, theater,
 	).Scan(&hdr.ID, &hdr.Title, &hdr.EffectiveDate, &hdr.EmblemURL, &hdr.Version, &hdr.Highlights, &hdr.UpdatedBy)
 	switch {
 	case err == nil:
 		card.Header = hdr
 	case errors.Is(err, pgx.ErrNoRows):
-		card.Header = &CardHeader{Section: section}
+		card.Header = &CardHeader{Section: section, Theater: theater}
 	default:
 		return nil, err
 	}
 
 	rows, err := r.db.Query(ctx, `
-		SELECT id, section, radio_type, label, channel_count, notes, updated_by, created_at, updated_at, highlights
-		FROM channel_plans WHERE section = $1`, section)
+		SELECT id, section, theater, radio_type, label, channel_count, notes, updated_by, created_at, updated_at, highlights
+		FROM channel_plans WHERE section = $1 AND theater = $2`, section, theater)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +107,7 @@ func (r *PostgresRepository) FindCard(ctx context.Context, section string) (*Com
 	byID := map[string]*ChannelPlan{}
 	for rows.Next() {
 		p := &ChannelPlan{Assignments: []*ChannelAssignment{}}
-		if err := rows.Scan(&p.ID, &p.Section, &p.RadioType, &p.Label, &p.ChannelCount,
+		if err := rows.Scan(&p.ID, &p.Section, &p.Theater, &p.RadioType, &p.Label, &p.ChannelCount,
 			&p.Notes, &p.UpdatedBy, &p.CreatedAt, &p.UpdatedAt, &p.Highlights); err != nil {
 			return nil, err
 		}
@@ -133,8 +137,8 @@ func (r *PostgresRepository) FindCard(ctx context.Context, section string) (*Com
 		FROM channel_assignments ca
 		JOIN channel_plans cp ON cp.id = ca.plan_id
 		JOIN nets n           ON n.id  = ca.net_id
-		WHERE cp.section = $1
-		ORDER BY ca.channel_number ASC`, section)
+		WHERE cp.section = $1 AND cp.theater = $2
+		ORDER BY ca.channel_number ASC`, section, theater)
 	if err != nil {
 		return nil, err
 	}
@@ -172,8 +176,8 @@ func (r *PostgresRepository) FindCard(ctx context.Context, section string) (*Com
 func (r *PostgresRepository) loadSheetRows(ctx context.Context, card *CommsCard) error {
 	fRows, err := r.db.Query(ctx, `
 		SELECT block, position, name, channel, up_freq, down_freq, sat, crypto, highlights
-		FROM pace_freq_rows WHERE section = $1
-		ORDER BY position ASC`, card.Section)
+		FROM pace_freq_rows WHERE section = $1 AND theater = $2
+		ORDER BY position ASC`, card.Section, card.Theater)
 	if err != nil {
 		return err
 	}
@@ -199,8 +203,8 @@ func (r *PostgresRepository) loadSheetRows(ctx context.Context, card *CommsCard)
 
 	hRows, err := r.db.Query(ctx, `
 		SELECT position, label, value, highlights
-		FROM pace_tmn_rows WHERE section = $1
-		ORDER BY position ASC`, card.Section)
+		FROM pace_tmn_rows WHERE section = $1 AND theater = $2
+		ORDER BY position ASC`, card.Section, card.Theater)
 	if err != nil {
 		return err
 	}
@@ -260,7 +264,7 @@ func (r *PostgresRepository) loadTiers(ctx context.Context, card *CommsCard) err
 			WHERE t.service_abbrev <> '' AND lower(s->>'abbrev') = lower(t.service_abbrev)
 			LIMIT 1
 		) sv ON TRUE
-		WHERE t.section = $1`, card.Section)
+		WHERE t.section = $1 AND t.theater = $2`, card.Section, card.Theater)
 	if err != nil {
 		return err
 	}
@@ -328,7 +332,7 @@ func saveTiers(ctx context.Context, tx pgx.Tx, card *CommsCard) error {
 		return nil
 	}
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM pace_tiers WHERE section = $1`, card.Section); err != nil {
+		`DELETE FROM pace_tiers WHERE section = $1 AND theater = $2`, card.Section, card.Theater); err != nil {
 		return fmt.Errorf("clear tiers: %w", err)
 	}
 	updatedBy := ""
@@ -349,10 +353,10 @@ func saveTiers(ctx context.Context, tx pgx.Tx, card *CommsCard) error {
 		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO pace_tiers
-				(id, section, tier, source, equipment_id, transport_id,
+				(id, section, theater, tier, source, equipment_id, transport_id,
 				 service_abbrev, custom_label, detail, highlights, updated_by, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`,
-			uuid.New().String(), card.Section, t.Letter, t.Source,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())`,
+			uuid.New().String(), card.Section, card.Theater, t.Letter, t.Source,
 			equipmentID, transportID, t.ServiceAbbrev, t.CustomLabel, t.Detail,
 			orEmpty(t.Highlights), updatedBy,
 		); err != nil {
@@ -378,17 +382,27 @@ func (r *PostgresRepository) SaveCard(ctx context.Context, card *CommsCard) erro
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if h := card.Header; h != nil {
+		// The emblem is never in this statement's SET list: it belongs to the
+		// squadron and is written by SetEmblemURL alone. A new theater row does
+		// inherit it from a sibling row on INSERT, so a card first saved after
+		// an upload is not born emblem-less. The subselect reads the
+		// pre-statement snapshot, which is exactly the sibling.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO pace_plans (id, section, title, effective_date, version, highlights, updated_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
-			ON CONFLICT (section) DO UPDATE
+			INSERT INTO pace_plans (id, section, theater, title, effective_date, version, highlights, emblem_url, updated_by, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,
+			        COALESCE((SELECT emblem_url FROM pace_plans WHERE section = $9 LIMIT 1), ''),
+			        $8,NOW(),NOW())
+			ON CONFLICT (section, theater) DO UPDATE
 			SET title = EXCLUDED.title,
 			    effective_date = EXCLUDED.effective_date,
 			    version = EXCLUDED.version,
 			    highlights = EXCLUDED.highlights,
 			    updated_by = EXCLUDED.updated_by,
 			    updated_at = NOW()`,
-			h.ID, card.Section, h.Title, h.EffectiveDate, h.Version, orEmpty(h.Highlights), h.UpdatedBy,
+			// The section is bound twice ($2 and $9) rather than reused: a placeholder
+			// that appears both in the VALUES list and inside the subselect makes
+			// Postgres deduce two types for it and refuse the statement (42P08).
+			h.ID, card.Section, card.Theater, h.Title, h.EffectiveDate, h.Version, orEmpty(h.Highlights), h.UpdatedBy, card.Section,
 		); err != nil {
 			return fmt.Errorf("upsert card header: %w", err)
 		}
@@ -399,9 +413,9 @@ func (r *PostgresRepository) SaveCard(ctx context.Context, card *CommsCard) erro
 		// so there is no "create plan" step in the UI.
 		var planID string
 		err := tx.QueryRow(ctx, `
-			INSERT INTO channel_plans (id, section, radio_type, label, channel_count, notes, highlights, updated_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
-			ON CONFLICT (section, radio_type) DO UPDATE
+			INSERT INTO channel_plans (id, section, theater, radio_type, label, channel_count, notes, highlights, updated_by, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
+			ON CONFLICT (section, theater, radio_type) DO UPDATE
 			SET label = EXCLUDED.label,
 			    channel_count = EXCLUDED.channel_count,
 			    notes = EXCLUDED.notes,
@@ -409,7 +423,7 @@ func (r *PostgresRepository) SaveCard(ctx context.Context, card *CommsCard) erro
 			    updated_by = EXCLUDED.updated_by,
 			    updated_at = NOW()
 			RETURNING id`,
-			p.ID, card.Section, p.RadioType, p.Label, p.ChannelCount, p.Notes, orEmpty(p.Highlights), p.UpdatedBy,
+			p.ID, card.Section, card.Theater, p.RadioType, p.Label, p.ChannelCount, p.Notes, orEmpty(p.Highlights), p.UpdatedBy,
 		).Scan(&planID)
 		if err != nil {
 			return fmt.Errorf("upsert plan %s: %w", p.RadioType, err)
@@ -455,11 +469,11 @@ func (r *PostgresRepository) SaveCard(ctx context.Context, card *CommsCard) erro
 // it was rather than emptied.
 func saveSheetRows(ctx context.Context, tx pgx.Tx, card *CommsCard) error {
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM pace_freq_rows WHERE section = $1`, card.Section); err != nil {
+		`DELETE FROM pace_freq_rows WHERE section = $1 AND theater = $2`, card.Section, card.Theater); err != nil {
 		return fmt.Errorf("clear frequency rows: %w", err)
 	}
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM pace_tmn_rows WHERE section = $1`, card.Section); err != nil {
+		`DELETE FROM pace_tmn_rows WHERE section = $1 AND theater = $2`, card.Section, card.Theater); err != nil {
 		return fmt.Errorf("clear tmn rows: %w", err)
 	}
 
@@ -476,9 +490,9 @@ func saveSheetRows(ctx context.Context, tx pgx.Tx, card *CommsCard) error {
 			// value, so the UNIQUE constraint cannot be tripped by a caller.
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO pace_freq_rows
-					(id, section, block, position, name, channel, up_freq, down_freq, sat, crypto, highlights)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-				uuid.New().String(), card.Section, b.name, i,
+					(id, section, theater, block, position, name, channel, up_freq, down_freq, sat, crypto, highlights)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+				uuid.New().String(), card.Section, card.Theater, b.name, i,
 				row.Name, row.Channel, row.Up, row.Down, row.Sat, row.Crypto,
 				orEmpty(row.Highlights),
 			); err != nil {
@@ -489,9 +503,9 @@ func saveSheetRows(ctx context.Context, tx pgx.Tx, card *CommsCard) error {
 
 	for i, row := range card.TmnRows {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO pace_tmn_rows (id, section, position, label, value, highlights)
-			VALUES ($1,$2,$3,$4,$5,$6)`,
-			uuid.New().String(), card.Section, i, row.Label, row.Value, orEmpty(row.Highlights),
+			INSERT INTO pace_tmn_rows (id, section, theater, position, label, value, highlights)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+			uuid.New().String(), card.Section, card.Theater, i, row.Label, row.Value, orEmpty(row.Highlights),
 		); err != nil {
 			return fmt.Errorf("insert tmn row %d: %w", i, err)
 		}
@@ -506,14 +520,30 @@ func saveSheetRows(ctx context.Context, tx pgx.Tx, card *CommsCard) error {
 // squadron that has never saved a card has no row, and a plain UPDATE would
 // match nothing and drop the emblem on the floor while reporting success.
 // Passing the empty string is how the emblem is cleared.
+//
+// One row per theater, in one statement. The emblem is the squadron's and a
+// card of either theater must find it on its own row, so this is where the
+// replication happens: after it runs, every pace_plans row for the section
+// carries the same emblem_url and a row exists for every entry of
+// ValidTheaters. The header upsert in SaveCard keeps the invariant from the
+// other side by copying a sibling's emblem into a new row.
 func (r *PostgresRepository) SetEmblemURL(ctx context.Context, section, url string) error {
+	sectionArg, urlArg := 2*len(ValidTheaters)+1, 2*len(ValidTheaters)+2
+	values := make([]string, 0, len(ValidTheaters))
+	args := make([]any, 0, urlArg)
+	for _, theater := range ValidTheaters {
+		n := len(args)
+		values = append(values, fmt.Sprintf("($%d,$%d,$%d,$%d,NOW(),NOW())", n+1, sectionArg, n+2, urlArg))
+		args = append(args, uuid.New().String(), theater)
+	}
+	args = append(args, section, url)
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO pace_plans (id, section, emblem_url, created_at, updated_at)
-		VALUES ($1,$2,$3,NOW(),NOW())
-		ON CONFLICT (section) DO UPDATE
+		INSERT INTO pace_plans (id, section, theater, emblem_url, created_at, updated_at)
+		VALUES `+strings.Join(values, ",")+`
+		ON CONFLICT (section, theater) DO UPDATE
 		SET emblem_url = EXCLUDED.emblem_url,
 		    updated_at = NOW()`,
-		uuid.New().String(), section, url,
+		args...,
 	)
 	return err
 }
@@ -530,7 +560,7 @@ func (r *PostgresRepository) CountAssignmentsForNet(ctx context.Context, netID s
 // which ones rather than just refusing.
 func (r *PostgresRepository) PlansUsingNet(ctx context.Context, netID string) ([]string, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT DISTINCT COALESCE(s.label, cp.section) || ' ' || upper(cp.radio_type)
+		SELECT DISTINCT COALESCE(s.label, cp.section) || ' ' || upper(cp.theater) || ' ' || upper(cp.radio_type)
 		FROM channel_assignments ca
 		JOIN channel_plans cp ON cp.id = ca.plan_id
 		LEFT JOIN sections s  ON s.key = cp.section

@@ -11,6 +11,13 @@ import { FeaturesBlock } from './FeaturesBlock';
 import { AccessoriesList } from './AccessoriesList';
 import { EMPTY_VALUE } from '@/utils';
 
+// The last block of each spec column. The two columns are grid items, so they
+// are always the same height, but their content is not: the shorter one's
+// closing rule used to stop partway down. Growing the last block, as a
+// one-track grid that stretches its child, puts both closing rules on the
+// column's bottom edge whichever side is longer.
+const COLUMN_FOOT = { paddingTop: 6, flex: 1, display: 'grid' } as const;
+
 function buildDocNumber(eq: Equipment): string {
   if (eq.doc_number) return eq.doc_number;
   const prefix = eq.terminal_type === 'radio' ? 'SIG-RTO-' : 'SIG-SAT-';
@@ -62,14 +69,18 @@ export function DataSheetView({ equipment: eq, showPageBreak = false, pageBreakA
               <div style={{ marginTop: 6 }}><SpecTable rows={data.physical_specs} borderSide="none" /></div>
             )}
           </SectionBlock>
-          <div style={{ paddingTop: 6 }}><SwapBlock swap={data.swap} /></div>
+          <div style={COLUMN_FOOT}><SwapBlock swap={data.swap} /></div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <SectionBlock title="RF Specifications" hideDivider>
             <FrequencyTable bands={data.bands} terminalType={eq.terminal_type} />
           </SectionBlock>
-          {rfRows.length > 0 && (
-            <div style={{ paddingTop: 6 }}><SpecTable rows={rfRows} borderSide="bottom" /></div>
+          {rfRows.length > 0 ? (
+            <div style={COLUMN_FOOT}><SpecTable rows={rfRows} borderSide="bottom" /></div>
+          ) : (
+            // No extra RF rows: still close the column with the same rule the
+            // SWAP block closes the other one with, on the same line.
+            <div style={COLUMN_FOOT}><div style={{ borderBottom: '2px solid var(--fg-1)' }} /></div>
           )}
         </div>
       </div>

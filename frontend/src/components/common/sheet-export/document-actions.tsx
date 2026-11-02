@@ -29,23 +29,32 @@ export function DocumentActions({
   onPrint,
   printDisabled = false,
   spec,
+  deck,
   inset = RAIL_BANNER_PX,
   children,
 }: {
-  onPrint: () => void;
+  /**
+   * Omit on a page that has no print route, and Print / Save PDF is not drawn
+   * rather than drawn and dead.
+   */
+  onPrint?: () => void;
   printDisabled?: boolean;
   /** Omit on a page with nothing to export as an image or slide. */
   spec?: ComponentProps<typeof SheetExportMenu>['spec'];
+  /** For a page whose .pptx is several slides; see `SheetExportMenu`. */
+  deck?: ComponentProps<typeof SheetExportMenu>['deck'];
   inset?: number;
   children?: ReactNode;
 }) {
   return (
     <Box sx={{ ml: 'auto', mr: `${String(Math.max(0, CONTENT_LINE - inset * 8))}px`, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
       {children}
-      {spec && <SheetExportMenu spec={spec} />}
-      <Button variant="contained" disableElevation onClick={onPrint} disabled={printDisabled} sx={BANNER_BTN_PRIMARY_SX}>
-        Print / Save PDF
-      </Button>
+      {spec && <SheetExportMenu spec={spec} deck={deck} />}
+      {onPrint && (
+        <Button variant="contained" disableElevation onClick={onPrint} disabled={printDisabled} sx={BANNER_BTN_PRIMARY_SX}>
+          Print / Save PDF
+        </Button>
+      )}
     </Box>
   );
 }

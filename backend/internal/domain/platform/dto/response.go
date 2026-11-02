@@ -4,9 +4,8 @@ type PlatformResponse struct {
 	ID              string   `json:"id"`
 	Designation     string   `json:"designation"`
 	PopularName     string   `json:"popular_name"`
-	Category        string   `json:"category"`
-	Kind            string   `json:"kind"`
-	Operator        string   `json:"operator"`
+	Category        []string `json:"category"`
+	Type            string   `json:"type"`
 	WaveformAbbrevs []string `json:"waveform_abbrevs"`
 	EquipmentIDs    []string `json:"equipment_ids"`
 	Notes           string   `json:"notes"`

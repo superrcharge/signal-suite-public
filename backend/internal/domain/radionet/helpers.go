@@ -13,6 +13,7 @@ func toNetResponse(n *Net) dto.NetResponse {
 		Name:        n.Name,
 		NetID:       n.NetID,
 		RadioType:   n.RadioType,
+		Theater:     n.Theater,
 		TxFreq:      n.TxFreq,
 		RxFreq:      n.RxFreq,
 		FreqUnit:    n.FreqUnit,
@@ -49,6 +50,7 @@ func diffNet(old, updated *Net) map[string]any {
 	addStr("name", old.Name, updated.Name)
 	addStr("net_id", old.NetID, updated.NetID)
 	addStr("radio_type", old.RadioType, updated.RadioType)
+	addStr("theater", old.Theater, updated.Theater)
 	addStr("tx_freq", old.TxFreq, updated.TxFreq)
 	addStr("rx_freq", old.RxFreq, updated.RxFreq)
 	addStr("freq_unit", old.FreqUnit, updated.FreqUnit)

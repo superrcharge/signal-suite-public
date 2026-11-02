@@ -85,7 +85,7 @@ describe('PacePrintPage equipment photo', () => {
     // The bug: equipment.photo_url is a raw private-container URL and the tile
     // used it as an img src, so the browser's unauthenticated fetch was refused
     // and it drew a broken image. The squadron emblem had exactly this bug in
-    // an earlier release and was fixed the same way; this tile was the last place doing it.
+    // v1.4.4 and was fixed the same way; this tile was the last place doing it.
     renderWithRoute(<PacePrintPage />, '/pace/asqd/print?print=1');
 
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalled());

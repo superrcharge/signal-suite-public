@@ -10,7 +10,7 @@ Ensure that user interfaces are intuitive, accessible, and visually coherent whi
 
 ## Required Patterns
 
-There are no UI/UX pattern files. The design system is the MUI theme and the asset color tokens already in `frontend/src/`; match the existing pages rather than introducing a parallel convention.
+`PATTERN:frontend-page` (`.claude/context/patterns/frontend-page.md`) is the page framework: banner, title, stat strip, table, document actions. The design system is the MUI theme and the asset color tokens already in `frontend/src/`; match the existing pages rather than introducing a parallel convention.
 
 ## Core Responsibilities
 

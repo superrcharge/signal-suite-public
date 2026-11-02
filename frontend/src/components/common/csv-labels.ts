@@ -25,6 +25,7 @@ const LABELS: Record<string, string> = {
   pim: 'PIM #',
   serial: 'Serial #',
   section: 'Section',
+  theater: 'Theater',
   status: 'Status',
   owner: 'Assigned To',
   owner_email: 'Owner Email',
@@ -43,14 +44,22 @@ const LABELS: Record<string, string> = {
   description: 'Description',
   kind: 'Kind',
   provider: 'Provider',
+  owned_by: 'Owned By',
+  owner_country: 'Owner Country',
 
   // Platforms
   designation: 'Designation',
   popular_name: 'Popular Name',
   category: 'Category',
-  operator: 'Operator',
   waveform_abbrevs: 'Waveforms',
   equipment_ids: 'Carried Equipment IDs',
+
+  // Organizations
+  key: 'Key',
+  short_label: 'Short Label',
+  branch: 'Branch',
+  color: 'Color',
+  section_key: 'Section Key',
 
   // Equipment catalog
   nomenclature: 'Nomenclature',

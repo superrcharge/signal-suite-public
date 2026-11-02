@@ -39,7 +39,7 @@ async function deleteContract(id: string): Promise<void> {
 }
 
 /**
- * `enabled` exists for the Dashboard, whose Contracts panel is rendered only
+ * `enabled` exists for the Stats page, whose Contracts panel is rendered only
  * for the roles that see contracts at all; the count behind a panel nobody is
  * shown is a request that costs a round trip and answers nothing.
  */

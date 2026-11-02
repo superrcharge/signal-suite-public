@@ -38,8 +38,8 @@ interface VocabFieldProps {
   addLabel?: string;
   /**
    * A leading empty-value option, and its wording. Transport offers "Not set"
-   * because a transport may legitimately have no kind; platform's category and
-   * kind always carry one, so it passes nothing.
+   * because a transport may legitimately have no kind. Transport is the only
+   * caller since platform's category and type became closed lists (044, 045).
    *
    * A string rather than a boolean so the wording stays at the call site.
    */

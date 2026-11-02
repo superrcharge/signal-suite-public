@@ -270,3 +270,12 @@ describe('columnFitScale', () => {
     expect(columnFitScale(0)).toBe(1);
   });
 });
+
+// The joint matrix passes its own narrower column minimum; compare's default
+// is unchanged when the argument is left off.
+describe('paginateColumns minCol', () => {
+  it('fits more columns per page with a narrower minimum, and defaults to MIN_COL', () => {
+    expect(paginateColumns(40, 150, 1000, 72).perPage).toBe(Math.floor(850 / 72));
+    expect(paginateColumns(40, 150, 1000).perPage).toBe(Math.floor(850 / 118));
+  });
+});

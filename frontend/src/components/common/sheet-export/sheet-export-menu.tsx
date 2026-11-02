@@ -12,6 +12,7 @@ import {
   copySheetToClipboard,
   downloadSheetPng,
   downloadSheetPptx,
+  type SheetDeckAction,
   type SheetExportResult,
   type SheetExportSpec,
 } from './sheet-export';
@@ -41,17 +42,30 @@ import {
  *   `aria-label` below is the name, and the Tooltip's promotion is a no-op.
  * - **The Snackbar is local.** There is no app-level snackbar, and introducing
  *   app-wide plumbing for one control would be the larger change.
+ *
+ * `deck` is for a page whose document is several sheets, the operation's Web
+ * view: its .pptx item then builds the deck instead of one slide of the sheet
+ * on screen, and says so in its caption. Nothing else moves. The item, its
+ * label, its place in the menu and the other two items are the same, and while
+ * the deck builds the trigger is disabled and the Snackbar says which slide it
+ * is on.
  */
-export function SheetExportMenu({ spec }: { spec: () => SheetExportSpec | null }) {
+export function SheetExportMenu({ spec, deck }: { spec: () => SheetExportSpec | null; deck?: SheetDeckAction }) {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<{ severity: 'success' | 'warning' | 'error'; text: string } | null>(null);
+  const [note, setNote] = useState<{ severity: 'info' | 'success' | 'warning' | 'error'; text: string } | null>(null);
 
   const menuOpen = Boolean(menuAnchor);
   const clipboardOk = clipboardImageSupported();
   const clipboardWhy = clipboardUnavailableReason();
 
   const closeMenu = () => setMenuAnchor(null);
+
+  const settle = (result: SheetExportResult, success: string) => {
+    if (!result.ok) setNote({ severity: 'error', text: result.error ?? 'The export failed.' });
+    else if (result.fontWarning) setNote({ severity: 'warning', text: result.fontWarning });
+    else setNote({ severity: 'success', text: success });
+  };
 
   const run = (action: (s: SheetExportSpec) => Promise<SheetExportResult>, success: string) => {
     closeMenu();
@@ -62,11 +76,16 @@ export function SheetExportMenu({ spec }: { spec: () => SheetExportSpec | null }
     }
     setBusy(true);
     void action(current)
-      .then((result) => {
-        if (!result.ok) setNote({ severity: 'error', text: result.error ?? 'The export failed.' });
-        else if (result.fontWarning) setNote({ severity: 'warning', text: result.fontWarning });
-        else setNote({ severity: 'success', text: success });
-      })
+      .then((result) => { settle(result, success); })
+      .finally(() => setBusy(false));
+  };
+
+  const runDeck = (action: SheetDeckAction) => {
+    closeMenu();
+    setBusy(true);
+    void action
+      .run((n, of) => { setNote({ severity: 'info', text: `Building slide ${String(n)} of ${String(of)}…` }); })
+      .then((result) => { settle(result, 'PowerPoint file downloaded.'); })
       .finally(() => setBusy(false));
   };
 
@@ -112,8 +131,8 @@ export function SheetExportMenu({ spec }: { spec: () => SheetExportSpec | null }
         <SheetMenuItem
           icon={<SlideshowIcon fontSize="small" />}
           label="Download .pptx"
-          hint="One slide, sized to this sheet"
-          onClick={() => run(downloadSheetPptx, 'PowerPoint file downloaded.')}
+          hint={deck ? deck.hint : 'One slide, sized to this sheet'}
+          onClick={() => { if (deck) runDeck(deck); else run(downloadSheetPptx, 'PowerPoint file downloaded.'); }}
         />
         <SheetMenuItem
           icon={<ContentCopyIcon fontSize="small" />}
@@ -132,11 +151,12 @@ export function SheetExportMenu({ spec }: { spec: () => SheetExportSpec | null }
 
       <Snackbar
         open={note !== null}
-        autoHideDuration={note?.severity === 'success' ? 3000 : 8000}
-        onClose={() => setNote(null)}
+        autoHideDuration={note?.severity === 'info' ? null : note?.severity === 'success' ? 3000 : 8000}
+        // A click elsewhere must not dismiss the progress line of a build still running.
+        onClose={(_, reason) => { if (!(reason === 'clickaway' && note?.severity === 'info')) setNote(null); }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity={note?.severity ?? 'success'} variant="filled" onClose={() => setNote(null)}>
+        <Alert severity={note?.severity ?? 'success'} variant="filled" onClose={note?.severity === 'info' ? undefined : () => setNote(null)}>
           {note?.text}
         </Alert>
       </Snackbar>

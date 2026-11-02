@@ -85,14 +85,14 @@ export function TerminalsPage() {
   // across from the kits page). Typing after mount stays in local state.
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
   // Hydrate the status filter from ?status=<key> on initial mount so
-  // dashboard tile clicks pre-filter the page. After mount the URL is
+  // Stats tile clicks pre-filter the page. After mount the URL is
   // not synced back - user clicks on the in-page stat strip mutate
   // local state only. URL is purely for deep-linking entrypoints.
   const [activeStatuses, setActiveStatuses] = useState<Set<string>>(() => {
     const initial = searchParams.get('status');
     return initial ? new Set([initial]) : new Set();
   });
-  // ?model= carries comma-separated slugs (e.g. "mini,hp" from dashboard
+  // ?model= carries comma-separated slugs (e.g. "mini,hp" from Stats
   // family tiles) - split so each toggle highlights individually.
   //
   // Unlike search and status above, the URL is the source of truth for this

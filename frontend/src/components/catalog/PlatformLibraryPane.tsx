@@ -8,65 +8,66 @@ import {
 } from '@/services';
 import { EMPTY_VALUE } from '@/utils';
 import { inputSty, labelSty, onBlur, onFocus } from '@/components/shf-form/styles';
-import { VocabField } from '@/components/shf-form/VocabField';
 import { chipSty, chipToggleSty } from '@/components/catalog/chip-styles';
-import type { Equipment, Platform } from '@/types';
-import { ReferenceLibraryPane } from './ReferenceLibraryPane';
+import { BRANCHES, BRANCH_NAMES, PLATFORM_TYPES, platformTypeLabel } from '@/types';
+import type { Branch, Equipment, Platform, PlatformType } from '@/types';
+import { ReferenceLibraryPane, type LibraryFacet } from './ReferenceLibraryPane';
+import { branchChip, branchToggleSty } from './branch-colors';
 
-/**
- * Starting vocabularies, not closed sets - the backend accepts any well-formed
- * value and normalises it (see platform/model.go). The select offers these plus
- * every value already in the library, the same arrangement as transport kinds.
- */
 // Mirrors the `max=` tags on platform's request DTOs. Capped as typed rather
 // than caught at save: the server 400s on a longer value, and a limit the user
 // only discovers on Save reads as the form having eaten their text.
 //
-// `category` and `kind` are absent on purpose. They are unbounded at the DTO
-// and bounded to 40 in platform/model.go, and they are entered through
-// VocabField rather than a text box - capping the free-text branch of a select
-// needs a prop that control does not have, which is a change of its own.
+// `category` and `type` are absent: both are closed lists, picked rather
+// than typed, so there is nothing to cap.
 const PLATFORM_DESIGNATION_MAX = 60;
 const PLATFORM_POPULAR_NAME_MAX = 120;
-const PLATFORM_OPERATOR_MAX = 120;
 const PLATFORM_NOTES_MAX = 1000;
 
-const DEFAULT_CATEGORIES = ['organic', 'joint', 'coalition'];
-const DEFAULT_KINDS = ['aircraft', 'ship', 'ground vehicle', 'ground station'];
-
-function vocabOptions(defaults: string[], inUse: string[]): string[] {
-  const extra = [...new Set(inUse.filter(v => v && !defaults.includes(v)))].sort();
-  return [...defaults, ...extra];
-}
-
+// The row chips' text sizes. Up from the shared 9 and 10, which read small on
+// the library's dark rows; the matrix keeps 9, since its column heads are
+// 76px wide.
+const LIBRARY_CHIP_TEXT = 10.5;
+const LIBRARY_TILE_TEXT = 11;
 
 interface Draft {
   designation: string;
   popular_name: string;
-  category: string;
-  kind: string;
-  operator: string;
+  category: Branch[];
+  type: PlatformType;
   waveform_abbrevs: string[];
   equipment_ids: string[];
   notes: string;
 }
 
 const EMPTY_DRAFT: Draft = {
-  designation: '', popular_name: '', category: 'joint', kind: 'aircraft',
-  operator: '', waveform_abbrevs: [], equipment_ids: [], notes: '',
+  designation: '', popular_name: '', category: [], type: 'aircraft',
+  waveform_abbrevs: [], equipment_ids: [], notes: '',
 };
 
 function draftOf(p: Platform): Draft {
   return {
     designation: p.designation,
     popular_name: p.popular_name,
-    category: p.category,
-    kind: p.kind,
-    operator: p.operator,
+    category: branchesOf(p),
+    // A response cached from before migration 045 has no `type`; the column
+    // default keeps the select controlled until the refetch lands.
+    type: p.type ?? 'aircraft',
     waveform_abbrevs: [...p.waveform_abbrevs],
     equipment_ids: [...p.equipment_ids],
     notes: p.notes,
   };
+}
+
+/**
+ * A platform's branches in precedence order, and only real branches. The
+ * server already stores them that way; reading through BRANCHES as well means
+ * a response cached from before migration 044, whose category is the string
+ * "joint", draws as no branch rather than as five letters.
+ */
+function branchesOf(p: Platform): Branch[] {
+  const have: readonly string[] = Array.isArray(p.category) ? p.category : [];
+  return BRANCHES.filter(b => have.includes(b));
 }
 
 function radioLabel(e: Equipment): string {
@@ -79,11 +80,9 @@ const norm = (s: string) => s.trim().toLowerCase();
  * The editable body shared by Add and Edit, so the two cannot drift in which
  * fields they offer.
  */
-function PlatformFields({ draft, setDraft, categoryOptions, kindOptions, libraryAbbrevs, radios, onEnter }: {
+function PlatformFields({ draft, setDraft, libraryAbbrevs, radios, onEnter }: {
   draft: Draft;
   setDraft: (next: Draft) => void;
-  categoryOptions: string[];
-  kindOptions: string[];
   libraryAbbrevs: string[];
   radios: Equipment[];
   onEnter?: () => void;
@@ -120,18 +119,45 @@ function PlatformFields({ draft, setDraft, categoryOptions, kindOptions, library
           <input value={draft.popular_name} onChange={e => set('popular_name', e.target.value)} onKeyDown={enter} style={{ ...inputSty, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur} placeholder="Lightning II" aria-label="Popular name" maxLength={PLATFORM_POPULAR_NAME_MAX} />
         </div>
       </div>
-      <div style={{ ...row, gridTemplateColumns: '1fr 1fr 1fr' }}>
+      <div style={{ ...row, gridTemplateColumns: '2fr 1fr' }}>
         <div>
-          <div style={labelSty}>Category</div>
-          <VocabField value={draft.category} options={categoryOptions} onChange={v => set('category', v)} placeholder="New category" capitalize />
+          {/* Toggles, not a select: a platform is often flown by more than
+              one branch, and the list is closed, so there is nothing to type.
+              Kept in BRANCHES order whatever order they are clicked in, the
+              same order the server stores. */}
+          <div style={labelSty}>Category - branch</div>
+          <div role="group" aria-label="Category - branch" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {BRANCHES.map(b => {
+              const on = draft.category.includes(b);
+              return (
+                <button
+                  key={b}
+                  type="button"
+                  aria-pressed={on}
+                  title={BRANCH_NAMES[b]}
+                  onClick={() => set('category', on ? draft.category.filter(x => x !== b) : BRANCHES.filter(x => x === b || draft.category.includes(x)))}
+                  style={branchToggleSty(b, on)}
+                >
+                  {b}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div>
-          <div style={labelSty}>Kind</div>
-          <VocabField value={draft.kind} options={kindOptions} onChange={v => set('kind', v)} placeholder="New kind" capitalize />
-        </div>
-        <div>
-          <div style={labelSty}>Operator</div>
-          <input value={draft.operator} onChange={e => set('operator', e.target.value)} onKeyDown={enter} style={{ ...inputSty, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur} placeholder="USAF" aria-label="Operator" maxLength={PLATFORM_OPERATOR_MAX} />
+          {/* A fixed list since migration 045, so a plain select: there is no
+              "add new" entry to offer. */}
+          <div style={labelSty}>Type</div>
+          <select
+            aria-label="Type"
+            value={draft.type}
+            onChange={e => { set('type', e.target.value as PlatformType); }}
+            style={{ ...inputSty, fontSize: 12 }}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          >
+            {PLATFORM_TYPES.map(t => <option key={t} value={t}>{platformTypeLabel(t)}</option>)}
+          </select>
         </div>
       </div>
 
@@ -169,7 +195,7 @@ function PlatformFields({ draft, setDraft, categoryOptions, kindOptions, library
 }
 
 /**
- * External comms platforms - airframes, ships, coalition assets - entered once
+ * External comms platforms - airframes, ships, ground stations - entered once
  * and read as columns of the joint compatibility matrix.
  *
  * A configuration of `ReferenceLibraryPane`, and the one that exercises its
@@ -201,15 +227,21 @@ export function PlatformLibraryPane({ readOnly = false }: { readOnly?: boolean }
   );
   const radioById = useMemo(() => new Map(radios.map(r => [r.id, r])), [radios]);
 
-  // Built from the whole library, never the filtered rows: the vocabulary the
-  // library holds is not a claim the search is making. Same rule as transport.
-  const categoryOptions = vocabOptions(DEFAULT_CATEGORIES, platforms.map(p => p.category));
-  const kindOptions = vocabOptions(DEFAULT_KINDS, platforms.map(p => p.kind));
+  // The filter bar: what a platform is, not what it carries - that is on its
+  // row and answered by the compatibility matrix.
+  // Memoised: a fresh array every render would recount both facets over the
+  // whole library on every keystroke in the search box.
+  const facets = useMemo<LibraryFacet<Platform>[]>(() => [
+    { label: 'Category', valuesOf: branchesOf, order: BRANCHES, titleOf: v => BRANCH_NAMES[v as Branch] ?? v },
+    // Guarded like branchesOf: a response cached from before migration 045
+    // carries `kind`, not `type`, and must draw rather than throw.
+    { label: 'Type', valuesOf: p => (p.type ? [p.type] : []), order: PLATFORM_TYPES, labelOf: platformTypeLabel },
+  ], []);
 
   return (
     <ReferenceLibraryPane<Platform, Draft>
       title="Platform Library"
-      subtitle="global reference - airframes, ships and coalition assets for the compatibility matrix"
+      subtitle="global reference - airframes, ships and ground stations for the compatibility matrix"
       noun="platforms"
       singular="Platform"
       items={platforms}
@@ -217,7 +249,7 @@ export function PlatformLibraryPane({ readOnly = false }: { readOnly?: boolean }
       // `notes` and `equipment_ids` are deliberately not searched: the first is
       // free prose nobody looks a platform up by, and the second is a list of
       // opaque ids.
-      searchText={p => [p.designation, p.popular_name, p.category, p.kind, p.operator, ...p.waveform_abbrevs].join(' ')}
+      searchText={p => [p.designation, p.popular_name, ...branchesOf(p), p.type, ...p.waveform_abbrevs].join(' ')}
       itemLabel={p => p.designation}
       canWrite={!readOnly && canWritePace}
       emptyDraft={EMPTY_DRAFT}
@@ -229,8 +261,6 @@ export function PlatformLibraryPane({ readOnly = false }: { readOnly?: boolean }
         <PlatformFields
           draft={draft}
           setDraft={setDraft}
-          categoryOptions={categoryOptions}
-          kindOptions={kindOptions}
           libraryAbbrevs={libraryAbbrevs}
           radios={radios}
           onEnter={onEnter}
@@ -242,21 +272,31 @@ export function PlatformLibraryPane({ readOnly = false }: { readOnly?: boolean }
             <span style={{ fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, color: 'var(--shf-paper)' }}>{p.designation}</span>
             {p.popular_name && <span style={{ fontFamily: 'var(--font-body)', fontSize: 11.5, color: 'var(--shf-graphite-300)', marginLeft: 8 }}>{p.popular_name}</span>}
           </div>
-          <div style={{ width: 90, flexShrink: 0, fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--shf-amber-deep)' }}>{p.category}</div>
-          <div style={{ width: 110, flexShrink: 0, fontFamily: 'var(--font-body)', fontSize: 11.5, color: 'var(--shf-graphite-300)', textTransform: 'capitalize' }}>{p.kind}</div>
-          <div style={{ width: 70, flexShrink: 0, fontFamily: 'var(--font-body)', fontSize: 11.5, color: 'var(--shf-graphite-300)' }}>{p.operator || <span style={{ color: 'var(--shf-graphite-500)', fontStyle: 'italic' }}>{EMPTY_VALUE}</span>}</div>
+          {/* One chip per branch, in precedence order. Sized for four - the
+              most any platform in the library carries - and wrapping past
+              that rather than running under the edit button. */}
+          <div title={branchesOf(p).map(b => BRANCH_NAMES[b]).join(', ') || undefined} style={{ width: 170, flexShrink: 0, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {branchesOf(p).length > 0
+              ? branchesOf(p).map(b => <span key={b} style={branchChip(b, LIBRARY_CHIP_TEXT)}>{b}</span>)
+              : <span style={{ fontFamily: 'var(--font-body)', fontSize: 11.5, color: 'var(--shf-graphite-500)', fontStyle: 'italic' }}>{EMPTY_VALUE}</span>}
+          </div>
+          <div style={{ width: 110, flexShrink: 0, fontFamily: 'var(--font-body)', fontSize: 11.5, color: 'var(--shf-graphite-300)', textTransform: 'capitalize' }}>{p.type}</div>
         </>
       )}
-      // The second level of the row, and the only pane that has one. Null
+      // The second level of the row, and the only pane that has one: what the
+      // platform carries, as plain labels. They filtered the list until the
+      // filter bar moved to category and type; a label that looks clickable
+      // and is not reads as broken, so these are spans, not buttons. Null
       // rather than an empty strip, so a platform carrying nothing does not
       // grow a blank line.
+      facets={facets}
       renderRowExtra={p => (
         (p.waveform_abbrevs.length > 0 || p.equipment_ids.length > 0) ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-            {p.waveform_abbrevs.map(a => <span key={a} style={chipSty('amber')}>{a}</span>)}
+            {p.waveform_abbrevs.map(a => <span key={a} style={{ ...chipSty('amber'), fontSize: LIBRARY_TILE_TEXT }} title="Carried waveform">{a}</span>)}
             {p.equipment_ids.map(id => {
               const r = radioById.get(id);
-              return <span key={id} style={chipSty('paper')} title="Carried catalog radio">{r ? radioLabel(r) : 'missing record'}</span>;
+              return <span key={id} style={{ ...chipSty('paper'), fontSize: LIBRARY_TILE_TEXT }} title="Carried catalog radio">{r ? radioLabel(r) : 'missing record'}</span>;
             })}
           </div>
         ) : null

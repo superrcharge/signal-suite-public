@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import {
   Drawer,
   ListItem,
@@ -20,7 +20,7 @@ import GridOnIcon from '@mui/icons-material/GridOn';
 import TuneIcon from '@mui/icons-material/Tune';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
-import { useSections, useContractFiscalYears } from '@/services';
+import { useSections, useContractFiscalYears, useOperations } from '@/services';
 import { useAuth } from '@/contexts/auth-context';
 import { useSidebarToggle } from '@/hooks';
 import { SectionEditDialog } from '@/components/common';
@@ -35,27 +35,54 @@ interface SidebarProps {
   isMobile: boolean;
 }
 
+/**
+ * Where the sidebar's list was scrolled to, kept across mounts.
+ *
+ * Every page renders its own MainLayout and the router has no layout route,
+ * so a navigation to a different route unmounts this sidebar and mounts a
+ * fresh one with its list at the top. Terminals and Kits items mostly change
+ * the query string on the same route and never trip it; every PACE Planning
+ * item goes to a different route, and that group sits at the bottom of the
+ * list, so each click there threw the list back to the top. Module scope,
+ * not state: state dies with the instance, which is the whole problem.
+ */
+let sidebarScrollTop = 0;
+
 export function Sidebar({ open, onClose, width, isMobile }: SidebarProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Layout effect, so the list is already where it was on the first paint.
+  // The cleanup reads the position once more on the way out, in case the last
+  // scroll event had not been delivered yet; guarded on clientHeight because a
+  // list that is already hidden reads 0 and would overwrite a real position.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = sidebarScrollTop;
+    return () => {
+      if (el && el.clientHeight > 0) sidebarScrollTop = el.scrollTop;
+    };
+  }, []);
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { data: sectionsData } = useSections();
-  const { canWrite, canWriteRadio, isPlanner, canSeeContracts } = useAuth();
+  const { data: opsData } = useOperations();
+  const { canWrite, canWriteRadio, canSeeContracts, canSeeTrackers } = useAuth();
   // Skipped entirely for a role whose Contracts group is not rendered.
   const { data: fiscalYears } = useContractFiscalYears(canSeeContracts);
   const sections = sectionsData ?? [];
 
-  const [terminalsOpen, toggleTerminals] = useSidebarToggle('terminals');
-  const [starshieldOpen, toggleStarshield] = useSidebarToggle('starshield');
-  const [paradigmOpen, toggleParadigm] = useSidebarToggle('paradigm');
-  const [onewebOpen, toggleOneweb] = useSidebarToggle('oneweb');
-  const [sectionsByOpen, toggleSectionsBy] = useSidebarToggle('sectionsBy');
-  const [kitsOpen, toggleKits] = useSidebarToggle('kits');
-  const [catalogOpen, toggleCatalog] = useSidebarToggle('catalog');
-  const [contractsOpen, toggleContracts] = useSidebarToggle('contracts');
-  const [paceOpen, togglePace] = useSidebarToggle('pace');
-  const [netsOpen, toggleNets] = useSidebarToggle('nets');
-  const [wheelsOpen, toggleWheels] = useSidebarToggle('wheels');
+  const [terminalsOpen, toggleTerminals] = useSidebarToggle('terminals', true);
+  const [starshieldOpen, toggleStarshield] = useSidebarToggle('starshield', true);
+  const [paradigmOpen, toggleParadigm] = useSidebarToggle('paradigm', true);
+  const [onewebOpen, toggleOneweb] = useSidebarToggle('oneweb', true);
+  const [sectionsByOpen, toggleSectionsBy] = useSidebarToggle('sectionsBy', false);
+  const [kitsOpen, toggleKits] = useSidebarToggle('kits', false);
+  const [catalogOpen, toggleCatalog] = useSidebarToggle('catalog', false);
+  const [contractsOpen, toggleContracts] = useSidebarToggle('contracts', false);
+  const [paceOpen, togglePace] = useSidebarToggle('pace', false);
+  const [netsOpen, toggleNets] = useSidebarToggle('nets', true);
+  const [wheelsOpen, toggleWheels] = useSidebarToggle('wheels', true);
+  const [operationsOpen, toggleOperations] = useSidebarToggle('operations', true);
 
   const isTerminalsRoute = location.pathname === '/terminals';
   const isKitsRoute = location.pathname === '/kits';
@@ -77,6 +104,11 @@ export function Sidebar({ open, onClose, width, isMobile }: SidebarProps) {
   const isCompatibilityRoute = location.pathname.startsWith('/catalog/compatibility');
   const isNetsRoute = location.pathname.startsWith('/nets');
   const isPaceRoute = location.pathname.startsWith('/pace');
+  const isOperationsRoute = location.pathname.startsWith('/operations');
+  // '/operations/<id>' -> '<id>'; the bare picker leaves no operation highlighted.
+  const activeOperation = location.pathname.startsWith('/operations/')
+    ? (location.pathname.split('/')[2] ?? null)
+    : null;
   // '/pace/asqd' -> 'asqd'; the bare dashboards leave no squadron highlighted.
   const activePaceSection = location.pathname.startsWith('/pace/')
     ? (location.pathname.split('/')[2] ?? null)
@@ -360,8 +392,16 @@ export function Sidebar({ open, onClose, width, isMobile }: SidebarProps) {
       {/* No horizontal padding: the banners run full-bleed and every row
           carries its own inset, 34px for a top-level row and 54px for the
           box a navItem sits in. First banner flush under the header. */}
-      <Box sx={{ pb: 1, flex: 1, overflow: 'auto' }}>
-        {!isPlanner && (
+      <Box
+        ref={scrollRef}
+        data-testid="sidebar-scroll"
+        onScroll={(e) => { sidebarScrollTop = e.currentTarget.scrollTop; }}
+        sx={{ pb: 1, flex: 1, overflow: 'auto' }}
+      >
+        {/* The trackers - Terminals, Kits and By Section - are admin and
+            editor only, on their own flag like Contracts below. A decluttered
+            view, not a boundary: the reads stay open to every role. */}
+        {canSeeTrackers && (
           <>
           {/* ── Terminals group ── */}
           {groupLabel('Terminals:', terminalsOpen, toggleTerminals)}
@@ -656,8 +696,32 @@ export function Sidebar({ open, onClose, width, isMobile }: SidebarProps) {
           </>
         ))}
 
+        {/* ── Operations group ──
+             Ungated: every role can read operations, and the pages hide their
+             own write controls. */}
+        {groupLabel('Operations', operationsOpen, toggleOperations)}
+        {groupBody(operationsOpen, (
+          <>
+          {allItem(
+            'All Operations',
+            isOperationsRoute && activeOperation === null,
+            () => { void navigate('/operations'); if (isMobile) onClose(); },
+          )}
+          <Box sx={{ pl: '54px' }}>
+            {(opsData?.operations ?? []).map((op) =>
+              navItem({
+                navKey: `op-${op.id}`,
+                label: op.name,
+                active: activeOperation === op.id,
+                onClick: () => { void navigate(`/operations/${op.id}`); if (isMobile) onClose(); },
+              })
+            )}
+          </Box>
+          </>
+        ))}
+
         {/* Contracts are internal: admin and editor only, on its own
-            flag rather than isPlanner. A decluttered view, not a boundary -
+            flag. A decluttered view, not a boundary -
             the reads stay open, as they are for every role. */}
         {canSeeContracts && (
           <>

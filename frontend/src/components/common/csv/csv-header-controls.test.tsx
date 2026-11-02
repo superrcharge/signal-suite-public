@@ -14,6 +14,7 @@ vi.mock('@/services', () => ({
     ],
   }),
   useContractFiscalYears: () => ({ data: ['FY26'] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
 /**
@@ -156,6 +157,7 @@ describe('CsvHeaderControls', () => {
       expect(await importOptions(user)).toEqual([
         'Transport Library',
         'Platform Library',
+        'Organization Library',
         'Nets',
       ]);
     });
@@ -195,6 +197,7 @@ describe('CsvHeaderControls', () => {
           'Waveform Library',
           'Transport Library',
           'Platform Library',
+          'Organization Library',
           'Nets',
         ]),
       );

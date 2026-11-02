@@ -39,12 +39,12 @@ export const CO_RENDER: readonly CoRenderContext[] = [
   },
   {
     // The Total tile renders in this row too, in the status blue.
-    name: 'dashboard family tiles',
+    name: 'Stats family tiles',
     mutual: { family: TERMINAL_FAMILY_COLORS, status: { total: STATUS_COLORS.total } },
   },
   {
     // A separate panel from the family tiles, so it may reuse those hues.
-    name: 'dashboard catalog tiles',
+    name: 'Stats catalog tiles',
     mutual: { catalog: CATALOG_COLORS },
   },
   {

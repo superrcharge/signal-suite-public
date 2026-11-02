@@ -10,7 +10,7 @@ Design, implement, and maintain frontend code that is correct, accessible, perfo
 
 ## Required Patterns
 
-There are no frontend pattern files. Component structure, state handling, and styling conventions are set by the existing code under `frontend/src/` - read the nearest comparable page or component before writing a new one. Accessibility and test conventions are enforced by `npx eslint src/` and `npx vitest run`, both of which must pass with zero errors.
+`PATTERN:frontend-page` (`.claude/context/patterns/frontend-page.md`) is the page framework: banner, title, stat strip, table, document actions. For everything else, component structure, state handling, and styling conventions are set by the existing code under `frontend/src/` - read the nearest comparable page or component before writing a new one. Accessibility and test conventions are enforced by `npx eslint src/` and `npx vitest run`, both of which must pass with zero errors.
 
 ## Core Responsibilities
 

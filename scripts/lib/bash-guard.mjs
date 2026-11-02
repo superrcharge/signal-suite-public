@@ -243,8 +243,8 @@ const UNRESOLVABLE = /[$`]/
 // This used to be `/>>?\s*([^\s;&|)<>]+)/g` over the raw string, which cannot
 // tell a redirection from a greater-than inside a quoted argument. It read
 // `select(.closedAt > "2026-09-05")` as a write to a file named 2026-09-05,
-// and `echo "GHCR > ACR"` as a write to one named ACR - the second being
-// the phrasing a registry-mirror step would naturally use. A `>`
+// and `echo "GHCR > REG ACR"` as a write to one named REG - the second being
+// the phrasing a deploy workflow uses for its own mirror step. A `>`
 // inside quotes is never an operator, so this is a correctness fix rather
 // than a loosening.
 //

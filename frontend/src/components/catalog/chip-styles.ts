@@ -40,7 +40,8 @@ export function chipSty(kind: 'amber' | 'paper'): React.CSSProperties {
  */
 export function panelToggleSty(open: boolean): React.CSSProperties {
   return {
-    padding: '4px 12px',
+    // Right pad less the letter-spacing, so the label centres: see chipToggleSty.
+    padding: '4px calc(12px - 0.08em) 4px 12px',
     fontFamily: 'var(--font-mono)',
     fontSize: 10.5,
     letterSpacing: '0.08em',
@@ -50,6 +51,9 @@ export function panelToggleSty(open: boolean): React.CSSProperties {
     background: open ? 'var(--shf-graphite-700)' : 'transparent',
     color: 'var(--shf-paper)',
     border: `1px solid ${open ? 'var(--shf-amber)' : 'var(--shf-graphite-600)'}`,
+    // A switch label never wraps: a two-line "Hide empty rows" doubled its
+    // chip's height and knocked every switch beside it off the banner line.
+    whiteSpace: 'nowrap',
   };
 }
 
@@ -69,7 +73,11 @@ export function chipToggleSty(active: boolean, uppercase = false): React.CSSProp
     // panelToggleSty's padding so every switch in a page's top strip is one
     // size - Compare's Equipment / Parameters were 22px tall beside 20px tabs
     // on every other page. The value chips keep the tighter padding.
-    padding: uppercase ? '4px 12px' : '3px 9px',
+    // The right pad is the left pad less the letter-spacing, because
+    // letter-spacing is added after the last glyph too and would otherwise
+    // leave that much empty track inside the right padding, with the label
+    // sitting left of centre. Same rule as BANNER_BTN_BASE.
+    padding: uppercase ? '4px calc(12px - 0.08em) 4px 12px' : '3px calc(9px - 0.06em) 3px 9px',
     fontFamily: 'var(--font-mono)',
     fontSize: 10.5,
     letterSpacing: uppercase ? '0.08em' : '0.06em',

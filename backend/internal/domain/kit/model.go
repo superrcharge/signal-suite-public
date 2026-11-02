@@ -16,9 +16,9 @@ type Kit struct {
 	Type   string
 	Status string
 	// Network classifications. Independent booleans, not a managed catalog.
-	Black bool
-	Secret bool
-	TopSecret  bool
+	Black     bool
+	Secret    bool
+	TopSecret bool
 	// Section is the FK to sections(key). Empty string = unassigned (NULL).
 	Section string
 	// Owner/OwnerEmail/OwnerPhone are the "assigned to" fields. Nullable.

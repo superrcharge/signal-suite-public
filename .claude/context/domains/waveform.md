@@ -29,7 +29,7 @@ Unique constraint is case-insensitive on `abbrev` - "SATCOM" and "satcom" are th
 - `errors.go` - coded `*Error` values implementing `response.CodedError`: `ErrWaveformNotFound`, `ErrWaveformAbbrevExists`, `ErrWaveformInternalError`
 - `dto/request.go`, `dto/response.go`
 - `repository.go` - `FindAll(ctx)`, `FindByID`, `Create`, `Update`, `Delete`, `AbbrevExists`, `AbbrevExistsExcluding`
-- `service.go` - `ListWaveforms`, `CreateWaveform`, `UpdateWaveform`, `DeleteWaveform`, plus `SetAudit` and `diffWaveform`
+- `service.go` - `ListWaveforms`, `CreateWaveform`, `UpdateWaveform`, `DeleteWaveform`, plus `SetAudit` and `diffWaveform`, `AddWaveformAssets` (registers an asset provider for the delete guard and rename; called once each for equipment and platform in `main.go`), `WaveformUsage` and `KnownWaveformAbbrevs` (implements `contracts.WaveformLookup`, which `main.go:242` hands to the operation service)
 - `repository_mock.go`, `service_test.go`
 - `handler.go` - standard CRUD handlers
 - `routes.go` - registers routes
@@ -136,6 +136,7 @@ usage readout exists to surface. That is why the readout is keyed off the librar
 **Waveform Library pane** (`components/catalog/WaveformLibraryPane.tsx`, mounted by `/catalog/comms-library`):
 - It used to live inside `catalog-editor-page.tsx`, reached by a ⊞ button that swapped it into the centre column. It is now a component of its own on the Comms Library route, which any authenticated user can open; see `equipment.md`'s "The Comms Library" section.
 - **It gates its own write controls on `canWriteRadio`.** While it only rendered inside the editor it had no gate at all, which was correct there and would have handed waveform create, edit and delete to every viewer the moment it moved. A gate inherited from a parent is not a gate the component has.
+- The header's `+` menu carries an **Add Waveform** row gated on the same `canWriteRadio`, which navigates to `/catalog/comms-library` (waveforms is the default chip, so no `?lib=`) where the pane's add form is the first thing under the banner. The row advertises the form; it does not open one of its own.
 - Full list of waveforms with inline create / edit / delete, a search box over abbrev, name and description, and the Add form above the list; abbrev is the canonical identifier. The abbrev input carries `maxLength` (`WAVEFORM_ABBREV_MAX`, 50), and name and description share the fixed two-line `NameAndDesc` cell every pane uses
 - Section 03 of radio equipment uses **toggle chips** sourced from this library: amber = selected, outline = not selected. Waveform abbrevs stored in `equipment.data.waveforms[].abbrev`.
 - **Orphan chips:** if an equipment record's `data.waveforms` contains an abbrev not present in the global library (e.g. from a legacy free-text era), it renders as a dim gray chip with an ✕ so the editor can remove it.
@@ -147,6 +148,8 @@ The waveform domain is independent - it does not import from equipment and equip
 In the editor's Section 03b (Compatibility Matrix), each `CompatibilityComparison` entry carries a `waveforms: string[]` field (abbrev strings) - a subset of the compared radio's own Section 03 waveforms. These are populated automatically when a radio is toggled on in the editor (pre-population from that radio's `data.waveforms`) and are also keyed by `equipment_id` for inventory-linked comparisons.
 
 See `equipment.md` for full details on the compatibility matrix, `CompatibilityComparison` type, and the PATCH `data` full-replace gotcha.
+
+Operation participants store `waveform_abbrevs`, `service_abbrevs` and `transport_ids` by value (columns on `operation_participants`), and the library delete guards do not check them, so removing an entry here leaves a participant pointing at it. See `operation.md`.
 
 ## CSV export / import
 

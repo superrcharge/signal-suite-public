@@ -107,7 +107,7 @@ export function KitsPage() {
   // across from the terminals page). Typing after mount stays in local state.
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
   // Hydrate the status filter from ?status=<key> on initial mount so
-  // dashboard tile clicks pre-filter the page.
+  // Stats tile clicks pre-filter the page.
   const [activeStatuses, setActiveStatuses] = useState<Set<string>>(() => {
     const initial = searchParams.get('status');
     return initial ? new Set([initial]) : new Set();

@@ -8,6 +8,9 @@ package dto
 // that wheel.
 type SaveCardRequest struct {
 	Section string `json:"-"      validate:"required"`
+	// conus | oconus, from the query string. Empty is conus; the service
+	// defaults it so callers that predate theaters keep working.
+	Theater string `json:"-"`
 	Title   string `json:"title"  validate:"omitempty,max=200"`
 	// RFC3339 date (YYYY-MM-DD). Empty clears it, which is how the editor's
 	// "Include date" checkbox turns the subtext off.
@@ -29,9 +32,9 @@ type SaveCardRequest struct {
 	// The sheet's middle band. The caps are the number of lines the band has
 	// room for on a fixed 816px page: past them the PACE tiles are pushed off
 	// the paper, so an over-long list is a 400 rather than a silent truncation.
-	LTACRows   []SaveFreqRowInput   `json:"ltac_rows"   validate:"omitempty,max=8,dive"`
-	TACSATRows []SaveFreqRowInput   `json:"tacsat_rows" validate:"omitempty,max=8,dive"`
-	TmnRows []SaveTmnRowInput `json:"tmn_rows" validate:"omitempty,max=6,dive"`
+	LTACRows   []SaveFreqRowInput `json:"ltac_rows"   validate:"omitempty,max=8,dive"`
+	TACSATRows []SaveFreqRowInput `json:"tacsat_rows" validate:"omitempty,max=8,dive"`
+	TmnRows    []SaveTmnRowInput  `json:"tmn_rows" validate:"omitempty,max=6,dive"`
 
 	// The four PACE tiles. Absent entirely means "unchanged", which is what lets
 	// an older client keep saving channel edits without wiping tiers it never
@@ -102,4 +105,6 @@ type SaveChannelInput struct {
 
 type GetCardRequest struct {
 	Section string `json:"-" validate:"required"`
+	// conus | oconus. Empty is conus, defaulted by the service.
+	Theater string `json:"-"`
 }

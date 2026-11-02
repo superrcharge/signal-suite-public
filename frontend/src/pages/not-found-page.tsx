@@ -48,7 +48,7 @@ export function NotFoundPage() {
         startIcon={<HomeIcon />}
         onClick={() => void navigate(fallbackPathFor(role))}
       >
-        {role === 'planner' ? 'Go to PACE' : 'Go to Dashboard'}
+        Go to Dashboard
       </Button>
     </Box>
   );

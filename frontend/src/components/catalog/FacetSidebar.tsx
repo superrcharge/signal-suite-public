@@ -28,6 +28,11 @@ interface FacetSidebarProps {
    */
   stacked?: boolean;
   /**
+   * Overrides the rail's height (default: the viewport below the header).
+   * For embedding the rail in a container that is not the app's scroll area.
+   */
+  height?: string;
+  /**
    * Terms this tab is APPLYING. Not the number of terms in the URL - a term
    * under a facet this tab does not admit is held and drawn below instead, and
    * counting it here is the bug an earlier fix closed.
@@ -468,6 +473,7 @@ export function FacetSidebar({
   onToggleCollapsed,
   onToggleTail,
   onSetAllExpanded,
+  height,
 }: FacetSidebarProps) {
   const allCollapsed = models.length > 0 && models.every(m => !expanded.has(m.facet.id));
 
@@ -492,7 +498,7 @@ export function FacetSidebar({
               alignSelf: 'flex-start',
               position: 'sticky',
               top: 0,
-              height: `calc(100vh - ${String(HEADER_HEIGHT)}px)`,
+              height: height ?? `calc(100vh - ${String(HEADER_HEIGHT)}px)`,
               overflowY: 'auto',
               borderRight: '1px solid var(--shf-graphite-700)',
             }),

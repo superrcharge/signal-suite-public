@@ -16,6 +16,8 @@ import (
 	"backend/internal/domain/contract"
 	"backend/internal/domain/equipment"
 	"backend/internal/domain/kit"
+	"backend/internal/domain/operation"
+	"backend/internal/domain/organization"
 	"backend/internal/domain/pace"
 	"backend/internal/domain/platform"
 	"backend/internal/domain/radionet"
@@ -247,6 +249,8 @@ func registeredPaths(t *testing.T) []string {
 	radionet.RegisterRoutes(app, nil, mw)
 	pace.RegisterRoutes(app, nil, mw)
 	platform.RegisterRoutes(app, nil, mw)
+	organization.RegisterRoutes(app, nil, mw)
+	operation.RegisterRoutes(app, nil, mw)
 	user.RegisterRoutes(app, nil, mw)
 	audit.RegisterRoutes(app, nil, mw)
 	csvbulk.RegisterRoutes(app, nil, mw)

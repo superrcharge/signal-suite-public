@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { compareExportSpec, libraryExportSpec } from './sheet-specs';
+import { compareExportSpec, libraryExportSpec, operationExportSpec, operationMatrixExportSpec } from './sheet-specs';
 import { compareStem } from './sheet-export';
 import { sheetOmitProps, sheetRootProps } from './sheet-root';
 import { PACE_SLIDE } from './slide-geometry';
@@ -111,5 +111,37 @@ describe('compareExportSpec', () => {
 describe('compareStem', () => {
   it('is a fixed filename stem, since the sheet is defined by the selection rather than by one record', () => {
     expect(compareStem()).toBe('signal-suite-equipment-comparison');
+  });
+});
+
+describe('operationExportSpec', () => {
+  it('is null until the Web view\'s paper is on screen', () => {
+    expect(operationExportSpec('Night Owl')()).toBeNull();
+  });
+
+  it('measures the marked paper, and names the sheet and the file for the operation', () => {
+    appendMarkedRoot({ scrollWidth: 1100, scrollHeight: 700 });
+
+    const spec = operationExportSpec('Night Owl')();
+
+    expect(spec?.width).toBe(1100);
+    expect(spec?.height).toBe(700);
+    expect(spec?.title).toBe('Night Owl comms by phase');
+    expect(spec?.stem).toBe('night-owl-comms-by-phase');
+  });
+});
+
+describe('operationMatrixExportSpec', () => {
+  it('is null until the Matrix view\'s paper is on screen', () => {
+    expect(operationMatrixExportSpec('Night Owl')()).toBeNull();
+  });
+
+  it('measures the marked paper, and names the sheet and the file for the operation', () => {
+    appendMarkedRoot({ scrollWidth: 1100, scrollHeight: 700 });
+    const spec = operationMatrixExportSpec('Night Owl')();
+    expect(spec?.width).toBe(1100);
+    expect(spec?.height).toBe(700);
+    expect(spec?.title).toBe('Night Owl matrix');
+    expect(spec?.stem).toBe('night-owl-matrix');
   });
 });

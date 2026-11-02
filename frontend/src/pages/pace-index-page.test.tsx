@@ -24,6 +24,7 @@ vi.mock('@/services', () => ({
   useUpdateSection: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSection: () => ({ mutate: vi.fn(), isPending: false }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   REASSIGN_TO_NONE: '__none__',
 }));
 
@@ -54,7 +55,7 @@ describe('PaceIndexPage', () => {
 
   it('omits sections that exist but have no card', () => {
     const page = renderPage();
-    // E SQD, Z SQD and ALERT are sections that do not produce a PACE card.
+    // E SQD and Z SQD are real sections that do not produce a PACE card.
     expect(page.queryByText('E SQD')).toBeNull();
     expect(page.queryByText('Z SQD')).toBeNull();
     expect(page.queryByText('ALERT')).toBeNull();

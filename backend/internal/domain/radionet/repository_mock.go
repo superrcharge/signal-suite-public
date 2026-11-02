@@ -8,8 +8,8 @@ type MockRepository struct {
 	FindBySectionFunc       func(ctx context.Context, section string) ([]*Net, error)
 	SectionExistsFunc       func(ctx context.Context, section string) (bool, error)
 	FindByIDFunc            func(ctx context.Context, id string) (*Net, error)
-	NameExistsFunc          func(ctx context.Context, section, name string) (bool, error)
-	NameExistsExcludingFunc func(ctx context.Context, section, name, excludeID string) (bool, error)
+	NameExistsFunc          func(ctx context.Context, section, theater, name string) (bool, error)
+	NameExistsExcludingFunc func(ctx context.Context, section, theater, name, excludeID string) (bool, error)
 	CreateFunc              func(ctx context.Context, n *Net) error
 	UpdateFunc              func(ctx context.Context, n *Net) error
 	DeleteFunc              func(ctx context.Context, id string) error
@@ -38,16 +38,16 @@ func (m *MockRepository) FindByID(ctx context.Context, id string) (*Net, error) 
 	return nil, nil
 }
 
-func (m *MockRepository) NameExists(ctx context.Context, section, name string) (bool, error) {
+func (m *MockRepository) NameExists(ctx context.Context, section, theater, name string) (bool, error) {
 	if m.NameExistsFunc != nil {
-		return m.NameExistsFunc(ctx, section, name)
+		return m.NameExistsFunc(ctx, section, theater, name)
 	}
 	return false, nil
 }
 
-func (m *MockRepository) NameExistsExcluding(ctx context.Context, section, name, excludeID string) (bool, error) {
+func (m *MockRepository) NameExistsExcluding(ctx context.Context, section, theater, name, excludeID string) (bool, error) {
 	if m.NameExistsExcludingFunc != nil {
-		return m.NameExistsExcludingFunc(ctx, section, name, excludeID)
+		return m.NameExistsExcludingFunc(ctx, section, theater, name, excludeID)
 	}
 	return false, nil
 }

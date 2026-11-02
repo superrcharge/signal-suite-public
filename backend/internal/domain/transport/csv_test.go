@@ -12,7 +12,7 @@ import (
 
 // The full column list, written out by hand. This literal IS the pin.
 var wantColumns = []string{
-	"id", "name", "kind", "provider", "description",
+	"id", "name", "kind", "provider", "owned_by", "owner_country", "description",
 	"created_by", "updated_by", "updated_at", "created_at",
 }
 
@@ -29,7 +29,7 @@ func csvSampleTransport() *Transport {
 	at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	return &Transport{
 		ID: "550e8400-e29b-41d4-a716-446655440000", Name: "EXAMPLE FIBRE RUN",
-		Kind: "fiber", Provider: "Example Telecom",
+		Kind: "fiber", Provider: "Example Telecom", OwnedBy: "Example Holdings, Inc.", OwnerCountry: "Germany",
 		Description: "A note with a comma, and \"quotes\"",
 		CreatedBy:   "tester", UpdatedBy: "tester", CreatedAt: at, UpdatedAt: at,
 	}

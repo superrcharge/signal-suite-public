@@ -47,6 +47,10 @@ async function uploadEquipmentPhoto(id: string, file: File): Promise<string> {
   return r.url;
 }
 
+async function deleteEquipmentPhoto(id: string): Promise<void> {
+  return apiClient.delete<void>(`/equipment/${id}/photo`);
+}
+
 export function useEquipment(params: ListEquipmentParams = {}) {
   return useQuery({
     queryKey: queryKeys.equipment.list(params as Record<string, unknown>),
@@ -120,6 +124,21 @@ export function useUploadEquipmentPhoto() {
     onSuccess: (_url, { id }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.equipment.all });
       invalidateLibraryUsage(qc);
+      void qc.invalidateQueries({ queryKey: queryKeys.equipment.detail(id) });
+    },
+  });
+}
+
+/**
+ * Clears the record's photo_url, which is what every EquipmentPhoto caller
+ * guards on, so invalidating the record is what takes the image off screen.
+ */
+export function useDeleteEquipmentPhoto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => deleteEquipmentPhoto(id),
+    onSuccess: (_void, { id }) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.equipment.all });
       void qc.invalidateQueries({ queryKey: queryKeys.equipment.detail(id) });
     },
   });

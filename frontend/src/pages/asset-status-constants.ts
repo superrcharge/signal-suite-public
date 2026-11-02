@@ -1,11 +1,11 @@
 /**
  * Asset status constants, shared by the terminals and kits pages, both of their
- * drawers, and the dashboard.
+ * drawers, and the Stats page.
  *
  * Terminals and kits carry the same seven statuses. That used to be a
  * coincidence maintained by hand - every one of those five files declared its
  * own copy of the options, the badge styles and the labels, ten arrays and
- * records in total, and nothing compared them. An earlier issue settled that kits and
+ * records in total, and nothing compared them. Issue #85 settled that kits and
  * terminals share the vocabulary permanently, which removed the only reason the
  * copies existed.
  *
@@ -57,6 +57,6 @@ export const STATUS_STYLES: Record<string, { bg: string; color: string; border: 
 
 /**
  * The three variants the ALERT stat tile rolls up. Shared so the tile counts
- * the same set on the kits page, the terminals page and the dashboard.
+ * the same set on the kits page, the terminals page and the Stats page.
  */
 export const ALERT_STATUSES = ['alert', 'alert-blue', 'alert-green'];

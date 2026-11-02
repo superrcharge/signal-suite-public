@@ -8,12 +8,16 @@ export { RoleBadge } from './role-badge';
 export { IceMark } from './ice-mark';
 export { SignalSuiteMark } from './signal-suite-mark';
 export { ListPagination } from './list-pagination';
+export { HighlightText } from './highlight-text';
+export { splitOnTerm } from './split-on-term';
 export { StatStrip, StatCell, StatLabel, StatValue } from './stat-strip';
 export { PillBadge, TagBadge, SectionBadge } from './record-badges';
+export { PhotoCropModal } from './photo-crop-modal';
 // The style modules. These were reachable only by deep import, which is how a
 // page ended up restating a value that was already exported one directory up.
 export * from './surface-sx';
 export * from './banner-controls';
 export * from './header-trigger-sx';
 export * from './search-field-sx';
+export * from './folder-tabs-sx';
 export * from './sheet-export';

@@ -19,12 +19,13 @@ Every ID below resolves to a file in this directory. If you add a pattern, add i
 | `PATTERN:error-handling` | Domain-Specific Error Handling | [error-handling.md](error-handling.md) |
 | `PATTERN:validation` | Domain-Owned Request Validation | [validation.md](validation.md) |
 | `PATTERN:testing-backend` | Backend Testing | [testing-backend.md](testing-backend.md) |
+| `PATTERN:frontend-page` | Adding a Page (page framework: banner, title, stat strip, table, document actions) | [frontend-page.md](frontend-page.md) |
 
 ## Scope
 
-The library is backend-only, and deliberately so. It was inherited from `tau_service_template`, which advertised 23 patterns across frontend, data, UI/UX, and DevOps categories; 18 of those files were never written, so every agent's "Required Patterns" list pointed at documents that did not exist. The dangling IDs were removed rather than filled in, because the conventions they described are already visible and enforced elsewhere:
+The library is backend patterns plus one frontend file, `frontend-page.md`, and deliberately that small. It was inherited from `tau_service_template`, which advertised 23 patterns across frontend, data, UI/UX, and DevOps categories; 18 of those files were never written, so every agent's "Required Patterns" list pointed at documents that did not exist. The dangling IDs were removed rather than filled in, because the conventions they described are already visible and enforced elsewhere:
 
-- **Frontend** - component and state conventions are set by the existing code under `frontend/src/`; accessibility and testing are enforced by `npx eslint src/` and `npx vitest run`.
+- **Frontend** - component and state conventions are set by the existing code under `frontend/src/`; accessibility and testing are enforced by `npx eslint src/` and `npx vitest run`. The one exception is the page framework, which had three competing shapes and no written recipe, so it has `frontend-page.md`, with its mechanical parts enforced by `scripts/check-ui-tokens.mjs`.
 - **Data** - migration rules live in `AGENTS.md` (sequential numbering, `-- +goose Up`, no unreviewed destructive ops).
 - **DevOps** - the real pipeline is `.github/workflows/ci.yml`; running it is `docs/self-hosting.md`.
 - **Security** - `.claude/context/authz.md` owns auth and RBAC.

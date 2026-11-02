@@ -6,12 +6,15 @@ Start, rebuild, or tear down the containerized dev stack with Podman Compose.
 
 ## ⛔ Machine rules (do not violate)
 
-- Use the same compose command the Makefile would: `podman-compose` if it is installed, otherwise `podman compose`, or `docker compose` on a Docker host. Mixing two of them against one project name confuses their state.
+- Use the compose command the Makefile uses: `podman compose`, or `docker compose` on a Docker host. Mixing two of them against one project name confuses their state.
 - **If `make` is not installed**, every target is a one-line compose command; run that directly. The compose file headers name the target they correspond to.
-- **Never run `npm install` on the host** for this flow. `node_modules` lives in an anonymous volume inside the `frontend-dev` container. Install into the container instead:
+- **A dependency change goes into both `node_modules` trees.** The running app uses an anonymous volume inside the `frontend-dev` container, and `verify.mjs` runs the frontend checks against the host's `frontend/node_modules`. Installing in only one of them leaves the other exercising the old version (see "Environment traps" in `AGENTS.md`):
   ```bash
   podman exec frontend-dev sh -c "cd /app && npm install <pkg>"
+  podman restart frontend-dev          # Vite caches a failed import resolution
+  cd frontend && npm install <pkg>     # the host tree, and package.json / the lockfile
   ```
+- **Bring up all three services, healthy, before implementing** - not only the ones a change seems to touch. The backend proxies `frontend-dev`, so `:3001` is unusable without it.
 
 ---
 

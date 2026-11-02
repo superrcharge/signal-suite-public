@@ -15,7 +15,7 @@ There are two styling systems in this app and a page belongs to exactly one:
 
 | | Shell | Sheet |
 |---|---|---|
-| Pages | dashboard, terminals, kits, contracts, users, audit, settings | catalog, comms library, compatibility, compare, nets, PACE |
+| Pages | dashboard (the tile home page), stats, terminals, kits, contracts, users, settings (the audit log is a Settings tab, not a page) | catalog, comms library, compatibility, compare, nets, PACE |
 | Styled with | MUI `sx` and `theme.palette` | inline `style` and `var(--shf-*)` |
 | Surfaces | `background.paper` on `background.default` | the graphite ramp |
 | Tokens | `components/common/surface-sx.ts` | `components/common/banner-controls.ts` |
@@ -57,11 +57,14 @@ else is a shell page.
 - **A list page renders it `visuallyHidden`.** Terminals, Kits and Contracts pass
   `<PageTitle visuallyHidden>`: the header's page picker is already showing the
   route's name two inches above, so a visible copy is the same word twice and costs
-  a line on the pages with the most to fit. The heading still exists, because it is
-  the only `h1` a screen reader can jump to - and because that keeps "every page has
-  a title" a rule the check can enforce, rather than one carrying three carve-outs
-  whose stated reason would justify deleting every title in the app. Everything else
-  - the admin pages, the sheet pages, the landing pages - renders it.
+  a line on the pages with the most to fit. Settings does the same for a different
+  reason: it is a stack of panels that each carry their own heading, so a banner
+  above them was a third restatement of the route. The heading still exists, because
+  it is the only `h1` a screen reader can jump to - and because that keeps "every
+  page has a title" a rule the check can enforce, rather than one carrying four
+  carve-outs whose stated reason would justify deleting every title in the app.
+  Everything else - Users, the sheet pages, the landing pages - renders it.
+  (The audit log is a Settings tab now, so it rides on Settings' hidden title.)
 - **`PageSubtitle` is the sentence after the title, on the same line.** 15px, not
   the title's 18: at 18 these wrapped to a second line at 1280px, which is the
   smallest screen this app is used on.
@@ -117,13 +120,33 @@ document: the data sheet, the compare matrix, the compatibility matrix, the comm
 library, a nets list, a PACE card. It goes last in the banner, with its right edge
 on `CONTENT_LINE`.
 
-**A list page does not get one.** Terminals, kits, contracts, users and the audit
-log export through the CSV control in the header, which is on every route, and
-their datasets are chosen inside that dialog rather than implied by the page. The
+**A list page does not get one.** Terminals, kits and contracts export through the
+CSV control in the header, which is on every route, and their datasets are chosen
+inside that dialog rather than implied by the page (users and the audit log have no
+CSV at all, by decision in `csv-manifest.json`, and get no control either). The
 two are not inconsistent with each other: CSV export is *dataset* scoped, so it
 has to be reachable from anywhere; a sheet export is *document* scoped and exports
 the page on screen, so in the header it would sit permanently disabled on every
 route without a sheet.
+
+### The optional parts, and when a page uses them
+
+- **`DocumentActions` `spec`** is the single sheet the share menu exports.
+  Omit it on a page with nothing to export as an image or slide.
+- **`DocumentActions` `deck`** is for a page whose `.pptx` is several slides: the share menu's `.pptx` item then builds the deck instead of one slide of the sheet.
+  The Operations Web view (one native slide per phase) and Matrix (one native table, on continuation slides) use it.
+- **`DocumentActions` `onPrint`** is optional.
+  A page that has no print route omits it, and Print / Save PDF is not drawn rather than drawn and dead.
+- **`PrintPageShell` `toolbar`** is screen-only controls for what the printed page shows, such as a phase switch.
+  The shell draws it in a centred three-column row between Back and the document actions, so it sits on the page's centre line rather than the middle of whatever is left; it is outside the printed root, so it never prints.
+- **`PhaseSwitch`** (`components/operations`) is the Operations phase chips.
+  `allPhases={false}` drops the "All phases" chip, for a view that is always about one phase (the Web view); `flush` drops its bottom margin, for a toolbar that aligns its own row (the print pages).
+
+## Toggles in a strip
+
+A show/hide or mode control in a banner, toolbar or phase row is `chipToggleSty(active, true)` from `components/catalog/chip-styles`, whose padding matches `panelToggleSty`, so every switch in a page's top strip is one height.
+It is never a banner button resized to look like one: the banner button styles (`BANNER_BTN_*`) are for actions.
+A chip that selects one of several values (a view, a phase) reports `aria-pressed`; a toggle whose label announces its own action ("View plan" and "Hide plan") reports `aria-expanded`.
 
 ## A table
 

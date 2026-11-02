@@ -184,6 +184,30 @@ export const PPTX_EMBEDDED_FONTS: readonly EmbeddedFontFamily[] = [
   },
 ];
 
+/**
+ * The faces of the operation deck, which is native text in the display and
+ * monospace faces and nothing else: Oswald for titles and unit names, IBM Plex
+ * Mono for everything the picture sets in mono.
+ *
+ * A list of its own rather than a longer `PPTX_EMBEDDED_FONTS`, because that
+ * one is what the PACE export embeds and adding a family to it would change
+ * every PACE file. Plex Mono's bold slot is SemiBold, for the same reason
+ * Barlow's is Bold: `runStyle` calls 600 and above bold, so the slot holds the
+ * heaviest weight a run asks for. Both files report `fsType = 0`.
+ */
+export const OPERATION_DECK_FONTS: readonly EmbeddedFontFamily[] = [
+  {
+    typeface: 'Oswald',
+    regular: '/fonts/Oswald-VariableFont_wght.ttf',
+    bold: '/fonts/Oswald-VariableFont_wght.ttf',
+  },
+  {
+    typeface: 'IBM Plex Mono',
+    regular: '/fonts/IBMPlexMono-Regular.ttf',
+    bold: '/fonts/IBMPlexMono-SemiBold.ttf',
+  },
+];
+
 export interface FetchedFontFamily {
   readonly typeface: string;
   readonly regular: Uint8Array;
@@ -214,6 +238,7 @@ async function fetchFont(url: string, fetcher: typeof fetch): Promise<Uint8Array
  */
 export async function sheetFontFiles(
   fetcher: typeof fetch = fetch,
+  families: readonly EmbeddedFontFamily[] = PPTX_EMBEDDED_FONTS,
 ): Promise<readonly FetchedFontFamily[]> {
   // One fetch per distinct URL, and the SAME array handed to both slots when a
   // family names one file twice. That reference identity is what lets the
@@ -229,7 +254,7 @@ export async function sheetFontFiles(
   };
 
   const results = await Promise.allSettled(
-    PPTX_EMBEDDED_FONTS.map(async (family) => ({
+    families.map(async (family) => ({
       typeface: family.typeface,
       regular: await load(family.regular),
       bold: await load(family.bold),

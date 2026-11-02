@@ -12,7 +12,7 @@ import { HelpDialog } from './help-dialog';
  * of those are gone, and the centring is the part worth explaining. It was
  * centred in the space the clusters left over rather than on the viewport, so
  * the page picker - which sizes to its own label - moved it: measured across
- * the nine page labels it drifted 26.7px, from x=653.5 on Kits to x=680.2 on
+ * the ten page labels (NAV_ITEMS) it drifted 26.7px, from x=653.5 on Kits to x=680.2 on
  * Dashboard. Anchoring the picker to its widest label would have pinned it, but
  * that fixes the symptom. The middle of the bar was the wrong place to begin
  * with: a centred control invites whatever a page centres beneath it to read

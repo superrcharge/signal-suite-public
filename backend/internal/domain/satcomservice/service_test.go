@@ -281,6 +281,33 @@ func TestServiceWritesAreAudited(t *testing.T) {
 		}
 	})
 
+	t.Run("an ownership edit is audited", func(t *testing.T) {
+		// Ownership is the kind of fact a reviewer asks "who changed that?"
+		// about, so it must reach the diff like every other field.
+		repo := &MockRepository{
+			FindByIDFunc: func(_ context.Context, _ string) (*SatcomService, error) {
+				return sampleService(), nil
+			},
+		}
+		svc := NewService(repo)
+		audit := &mockAuditRecorder{}
+		svc.SetAudit(audit)
+
+		owner, country := "Eutelsat Group", "France"
+		if _, err := svc.UpdateService(context.Background(),
+			&dto.UpdateServiceRequest{ID: "svc-1", OwnedBy: &owner, OwnerCountry: &country},
+			&dto.UpdateServiceResponse{}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		changes := audit.events[0].Changes
+		for _, field := range []string{"owned_by", "owner_country"} {
+			if _, ok := changes[field]; !ok {
+				t.Errorf("diff missing %s: %+v", field, changes)
+			}
+		}
+	})
+
 	t.Run("a service with no recorder wired still saves", func(t *testing.T) {
 		// Record is best-effort; an unwired audit must never fail a write.
 		svc := NewService(&MockRepository{})
@@ -305,13 +332,15 @@ func TestCreateServiceTrimsFields(t *testing.T) {
 	svc := NewService(repo)
 
 	status, err := svc.CreateService(context.Background(),
-		&dto.CreateServiceRequest{Abbrev: "  GX  ", Name: " Global Express ", Description: " desc "},
+		&dto.CreateServiceRequest{Abbrev: "  GX  ", Name: " Global Express ", Description: " desc ",
+			OwnedBy: " Viasat ", OwnerCountry: " United States "},
 		&dto.CreateServiceResponse{})
 
 	if status != http.StatusCreated || err != nil {
 		t.Fatalf("status = %d, err = %v; want 201", status, err)
 	}
-	if created.Abbrev != "GX" || created.Name != "Global Express" || created.Description != "desc" {
+	if created.Abbrev != "GX" || created.Name != "Global Express" || created.Description != "desc" ||
+		created.OwnedBy != "Viasat" || created.OwnerCountry != "United States" {
 		t.Errorf("stored %+v; want trimmed fields", created)
 	}
 }

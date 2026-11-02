@@ -15,7 +15,7 @@ If you are on `main`, create a branch before reading a single file or writing a 
 Never implement anything on main.
 The only commits that should ever land on main are merges from pull requests.
 
-**This is enforced on the server, not just here.** `main` is a protected branch:
+**On the original repository this was enforced on the server, not just here.** These are the settings it used; on a fresh clone they are yours to turn on:
 
 | Rule | Setting |
 |---|---|
@@ -26,8 +26,7 @@ The only commits that should ever land on main are merges from pull requests.
 | Linear history | required, which matches squash merging |
 
 A direct push is rejected by the remote with `GH006: Protected branch update failed`,
-including for admins. `Add PR to project` is deliberately **not** a required check, because
-it is skipped for Dependabot and a skipped required check blocks the merge.
+including for admins. A check that can be skipped should not be made a required check, because a skipped required check blocks the merge.
 
 Tags are unaffected - protection covers `refs/heads/main`, and a tag is `refs/tags/*`.
 
@@ -46,9 +45,8 @@ The gates are not optional and do not wait to be asked for:
 
 | Gate | When | Not negotiable because |
 |---|---|---|
-| `/start` | session open, before the first file is read | it is what catches work starting on `main`, a red CI baseline, or open Dependabot alerts |
+| `/start` | session open, before the first file is read | it is what catches work starting on `main` or a red CI baseline |
 | `/ship` | before every push, not after | it audits far more than the code gates do, and hand-rolled equivalents miss things, including stale domain context files |
-| `gh` account | before the first `gh` command | `gh` keeps one active account machine-wide, so the wrong one silently hits the wrong repo. `scripts/env-report.mjs` (run by `/start` step 0) prints the active account so it can be read rather than assumed |
 
 **Hand-rolling equivalent checks is not a substitute for running the skill.**
 A plan that does not name which gates apply and when is not finished.
@@ -65,24 +63,30 @@ Default to reading **only** what the current task needs.
 
 | Working on... | Read |
 |---|---|
-| Terminals (CRUD, page, inline edit, drawer, CSV) | `.claude/context/domains/terminal.md` |
-| Kits (CRUD, type, network booleans, page, drawer, CSV) | `.claude/context/domains/kit.md` |
-| Sections (management, reassign, sidebar dialog) | `.claude/context/domains/section.md` |
-| Contracts (POP dates, vendor, FY, inline edit, drawer) | `.claude/context/domains/contract.md` |
-| Users page | `.claude/context/domains/user.md` + `.claude/context/authz.md` |
+| Terminals (CRUD, page UI, inline edit, drawer, CSV import/export) | `.claude/context/domains/terminal.md` |
+| Kits (CRUD, type/network booleans, page UI, inline edit, drawer, CSV) | `.claude/context/domains/kit.md` |
+| Sections (management, reassign-on-delete, sidebar dialog) | `.claude/context/domains/section.md` |
+| Contracts (POP dates, vendor, FY, inline edit, drawer, sorting) | `.claude/context/domains/contract.md` |
+| Users (Users page, display) | `.claude/context/domains/user.md` + `.claude/context/authz.md` |
 | Audit log | `.claude/context/domains/audit.md` |
-| Equipment Catalog (browse, facet filter, datasheet, compare, print, editor, photo upload, Comms Library) | `.claude/context/domains/equipment.md` |
+| Equipment Catalog (browse, facet filter, datasheet, compare, print, 3-pane editor, photo upload, Comms Library) | `.claude/context/domains/equipment.md` |
 | Global Waveform Library (waveform CRUD, toggle chips in editor) | `.claude/context/domains/waveform.md` |
 | Global Services Library (SATCOM service CRUD, toggle chips, CIR/MIR rows) | `.claude/context/domains/service.md` |
-| Transport Library (fibre/cellular/MANET/HF CRUD, kinds, Comms Library pane) | `.claude/context/domains/transport.md` |
-| Platform Library + joint compatibility matrix (platform CRUD, open category/kind, `/catalog/compatibility`, print) | `.claude/context/domains/platform.md` |
+| Transport Library (fibre/cellular/MANET CRUD, open kinds, owner, Comms Library pane) | `.claude/context/domains/transport.md` |
+| Platform Library + joint compatibility matrix (platform CRUD, category = branches and type, both closed lists, `/catalog/compatibility`, print and fit) | `.claude/context/domains/platform.md` |
 | Nets Library (net CRUD, JEM/MPU5 tabs, TX/RX, radio type) | `.claude/context/domains/net.md` |
 | PACE Planner (comms card, channel wheels, card editor, print sheet) | `.claude/context/domains/pace.md` |
+| Operations (operation CRUD, picker, drawer with its Phases and Locations editors, the Join Operation wizard and its Phases step, ad hoc organizations, participants and the Participants popup, per-asset phase marks, the tier select, must-talk requirements and their direct / relay / no link status, the Loadout tabs, Matrix and Web phase picture with its plan panel, the native .pptx decks and both print routes, the RFI board and its poster-only resolve, the optimistic lock) | `.claude/context/domains/operation.md` |
+| Organization Library (organization CRUD, immutable key, branch, colour, section link; picked only inside Operations, managed on the Settings Organizations tab, no Comms Library pane) | `.claude/context/domains/organization.md` |
+| Dashboard and Stats (the home tile grid, `NAV_ITEMS` and its gates, the Stats counts page and its deep links) | `.claude/context/domains/dashboard.md` |
 | Help / FAQ content, the "I need help!" dialog, the role chip | `.claude/context/help.md` |
-| RBAC / auth / middleware / role changes | `.claude/context/authz.md` |
+| RBAC / auth middleware / role changes / self-registration | `.claude/context/authz.md` |
 | Settings page | `.claude/context/settings-page.md` |
 | Adding a page, or any page chrome: banner, title, stat strip, table, document actions | `.claude/context/patterns/frontend-page.md` |
-| Folder layout | `.claude/context/structure.md` |
+| Directory tree / file layout | `.claude/context/structure.md` |
+| Backend patterns (service shape, errors, validation, tests) | `.claude/context/patterns/*.md` |
+| What a domain word means, what the app is for | `docs/glossary.md`, `docs/product.md` |
+| Every component in the stack, with what it does | `docs/stack.md` |
 | Running it yourself / compose / containers / CI-CD | `docs/self-hosting.md` (+ `.github/workflows/README.md`) |
 
 Patterns under `.claude/context/patterns/` are referenced for specific shapes (API design, error handling, validation, testing-backend, and `frontend-page` for the page framework).
@@ -108,7 +112,7 @@ The pre-push hook calls it with a flag, and nothing else does:
 node scripts/verify.mjs --reuse-receipt
 ```
 
-That runs the two steps a receipt cannot vouch for and, if the receipt on disk still describes this exact tree, exits 0 without repeating the others.
+That runs the steps a receipt cannot vouch for, the ones named in `ALWAYS_RUN`, and, if the receipt on disk still describes this exact tree, exits 0 without repeating the rest.
 Measured: **4.5s instead of 1m33s.**
 
 Any change to the tree, a missing receipt, an unreadable one, or a receipt without a digest all fall straight back to the full run.
@@ -177,10 +181,8 @@ The measured shape of the problem, taken on 2026-09-02:
 | PR opened to merged, last 10 PRs | 4 to 6 minutes |
 | PR CI, the blocking one | about 4 minutes |
 | `verify.mjs`, full local gate | 2m13s |
-| Dependabot PRs opened, all time | 10 |
-| Dependabot PRs that merged themselves | 0 |
 
-So the mechanics were never slow. Three other things were.
+So the mechanics were never slow. Two other things were.
 
 **`checkGoModules` returned `ok: false` on any direct module behind latest, with `GO_MODULE_HOLDS` empty.**
 Read that literally: the moment any upstream author anywhere cut a release, the gate went red, on whatever branch happened to be checked out, regardless of what it changed.
@@ -192,11 +194,6 @@ What the old behaviour uniquely caught was the harmless case.
 **`/ship` check 2c did the same thing to npm**, auto-bumping every outdated direct dep and committing it before the push.
 Every feature push was therefore also a dependency PR, with unrelated lockfile churn in the diff.
 It now reports.
-
-**Nothing merged Dependabot's PRs.**
-The bot was configured and working, and its output became a queue drained by hand: bumps sat for days and then merged in one sitting.
-Meanwhile the drift they would have closed was red-lighting unrelated branches through the check above, so not merging them was paid for on every branch rather than only on theirs.
-The fix was to let GitHub auto-merge patch and minor bumps once the same required checks a human would wait for are green, and to keep major bumps, the whole `docker` ecosystem, and `gofiber/fiber` at any update type for a person to read. This copy of the repo ships without that workflow and without a `dependabot.yml`: it is shared as-is, not maintained on a release cadence, so no bot opens PRs here. Security alerts are a repository setting and still fire.
 
 The rule to carry away: **a check either blocks or it reports, and which one it does is a claim about severity that has to be argued.**
 "Dependencies should be current" is true and is not a reason to stop a push.
@@ -210,6 +207,10 @@ They were still walked in full, one prose instruction at a time, on every push, 
 Step 0b runs `node scripts/ship-scope.mjs`, which prints `DOC_CHECKS=required` or `DOC_CHECKS=skip` and always exits 0.
 It is not a gate and cannot fail a push.
 
+It prints a second verdict, `RELEASE=required` or `RELEASE=skip`, for the same reason and in the same shape.
+The release image is built from `frontend/` and `backend/` only, and a deploy runs it, so a diff touching none of those (test files aside) would tag and deploy exactly what is already running.
+On `RELEASE=skip` the release sequence stops after the merge: no CHANGELOG version entry, no tag, no deploy.
+
 Two properties worth knowing before touching it:
 
 - **The verdict is computed, not judged.** `/ship` runs on a small model precisely because its checks are meant to be mechanical, and "does this diff touch a domain" is exactly the kind of question that must not be left to inference, because inference gives a different answer on different runs. The logic lives in `scripts/lib/ship-scope.mjs` with unit tests in both directions, the same shape as `bash-guard`.
@@ -217,6 +218,7 @@ Two properties worth knowing before touching it:
 
 The bias is deliberately toward running the checks.
 Anything resembling a domain, a page, a context file, or tracked prose puts them back in scope, and a diff that cannot be read does too.
+So does a migration or a diagram source, because those are what check 10b's diagrams draw, and `check-docs.mjs` only counts tables: migration 042 widened five unique keys and added a column while every mechanical check stayed green.
 
 ## Versions are checked before CI, not by CI
 
@@ -279,7 +281,11 @@ part of the CI preflight job, and it compiles nothing.
 | versions in prose | Go, Node and Postgres versions quoted in any tracked `.md` match `go.mod`, `ci.yml` and `compose.yaml`. Prose is where a version pin goes stale invisibly, because nothing installs from it |
 | relative links resolve | every relative markdown link points at a file that exists. Note the limit: it sees links, not prose. The dead docs page was named in a sentence rather than linked, so nothing static was ever going to catch that one |
 | migrations named in prose | every `NNN_name.sql` mentioned in prose exists in `backend/migrations/` |
-| diagrams match the code | every table a migration creates is drawn in `data-model.typ`, every `.typ` has both rendered themes committed, and a prose table **or migration** count is the real count - across the tracked `.md` files **and** the `.typ` sources themselves. `docs` was `git ls-files '*.md'`, so the count check had been reading every file in the repo except the diagrams it is a claim about. It also fails a responsive diagram that kept a `pt` width, which is the only way a silently broken re-render is visible from outside the render. The diagrams were the last part of the doc surface nothing held to the code, which is the whole argument this section makes |
+| diagrams match the code | every table a migration creates is drawn in `data-model.typ`, every `.typ` has both rendered themes committed, and a prose table **or migration** count is the real count - across the tracked `.md` files **and** the `.typ` sources themselves. `docs` was `git ls-files '*.md'`, so the count check had been reading every file in the repo except the diagrams it is a claim about. It also fails a responsive diagram that kept a `pt` width, which is the only way a silently broken re-render is visible from outside the render, and one too wide for its smallest text to reach 11px in the 838px README column: the diagrams used to render at 4.5px to 6.3px there, true and unreadable. The diagrams were the last part of the doc surface nothing held to the code, which is the whole argument this section makes |
+| gate counts in prose | a count of `verify.mjs` steps, preflight checks, release checks, `/ship` checks or CI jobs quoted in any tracked `.md` or `.typ` is the real count, read from `STEPS` and `ALWAYS_RUN`, the preflight `STEPS`, the `/ship` summary table and `ci.yml`. The patterns live in `scripts/lib/prose-counts.mjs` with tests in both directions. They are narrow on purpose, and a claim wrapped across a line break still counts. "N domains" is deliberately not checked, because it counts something different in almost every file. Historical claims, such as the blank-white-screen account below, are exceptions with a written reason, and an exception that no longer matches anything fails the check |
+| stack page is complete | every direct Go module, every npm package, every workflow and every compose service appears in `docs/stack.md` inside backticks. A bare word in prose does not count, because names like `react` and `app` occur incidentally everywhere and would make the check pass vacuously. Its predecessors, a template tech-stack list and two hand-typed inventories, all drifted for want of exactly this. The parsers live in `scripts/lib/stack-coverage.mjs` with tests in both directions |
+| glossary covers the vocabularies | every value of the app's closed vocabularies (statuses, kit types, terminal models, platform branches and types, PACE radios and theaters, net radio types, roles) has a row in `docs/glossary.md`, read from its Go declaration. The code says what a status does; only the glossary says what ALERT or IFK means to the people using it. Open vocabularies (transport kinds, fiscal years, section keys) are not enumerable from source and are left out rather than checked vacuously. `scripts/lib/glossary-coverage.mjs`, tests in both directions |
+| catalog-lookup copies match the app | `.claude/workflows/catalog-lookup.js` is self-contained, so it copies the editor's Operational Mode and band options, the equipment and waveform import template keys, the nomenclature and waveform abbrev `max=` limits, and the editor's `slugify`. Each copy is read from the workflow and each source from its own declaration (`catalog-vocab.ts`, the two `csv.go` tables, the two request DTOs, `catalog-editor-page.tsx`), and they must agree. Band enums compare as sets, because the workflow lists them in frequency order; the rest compare exactly, `slugify` token for token with only the workflow's `String()` wrapper allowed. The radio enum lacked S and C for as long as the editor offered them, which a 16-radio lookup ran into on 2026-09-30. It is a check-docs step rather than a `verify.mjs` one because `.claude/` is outside the receipt's scope, so a verify step would be skipped on the reuse path. `scripts/lib/catalog-lookup-copies.mjs`, tests in both directions |
 
 **The diagram check compares content, never timestamps.** Git does not preserve mtimes, so on a
 fresh clone every file carries checkout time and an "SVG older than its `.typ`" test is either
@@ -354,50 +360,11 @@ actually built.
 
 ## A green deploy is not a live deploy
 
-A container platform's restart command returns when the platform **accepts** the restart, not when the container is up and answering.
-So a deploy step can go green against a site still serving the old image, still booting, or failing to boot at all.
-The only thing closing that gap was remembering to curl it afterwards, and remembering to is not a control.
-
-`scripts/verify-deploy.mjs` is the last step of any deploy, so a green deploy means the build is serving:
-
-```bash
-node scripts/verify-deploy.mjs --url https://<host> --boot
-node scripts/verify-deploy.mjs --url http://localhost:3001 --auth-disabled --boot   # dev and self-hosted
-```
-
-| Check | What it establishes |
-|---|---|
-| `/health` 200, polled | the container is up at all. The one check that legitimately takes time, so it is the one that polls |
-| `/ready` 200 | it reached its dependencies, Postgres included |
-| `/` returns HTML | the SPA is served, not just the API |
-| `/api/v1/terminals` 401 | the route **exists** and enforces auth |
-| an unregistered route 404s | the control that makes the 401 mean anything |
-| `--boot`: `#root` is not empty | the SPA **starts**, not merely that it was served |
-
-**`--boot` is the half that was missing, and it took an outage to add.**
-Every other check in that table passed against an earlier release, which served a blank white screen in every
-browser: `/health` and `/ready` were 200, `/` returned correct HTML, every asset returned 200, and
-the 401-vs-404 pair confirmed the routes were registered. The server was entirely fine and React
-never initialised. "SPA is served" and "SPA boots" are different claims and only the first one was
-ever being made.
-It runs the page in headless Chrome with `--dump-dom`, which prints the DOM **after** scripts run,
-and fails if the backend's empty `<div id="root"></div>` is still empty. Measured both ways: the
-broken bundle dumps 962 bytes with the empty root intact, a working one tens of kilobytes without
-it. Verified end to end against the broken bundle, where the five original checks all pass and only
-this one fails.
-No npm dependency: it drives a browser the machine already has, and a deploy job should resolve
-`CHROME_PATH` **before** any deploy step so a missing browser costs a fast red run rather than a
-deployed image nobody verified. A missing browser is a failure, never a skip - a boot check that
-quietly does nothing is the hollow gate this whole section exists to replace.
-What it does not do is read the console; it answers "did anything render", which is the question a
-blank page poses.
-
-The 401 and the 404 are a pair, and neither is worth much alone.
-A 401 by itself could be a blanket auth filter in front of a route that was never registered; the 404 on the nonsense path is what proves the server tells them apart, so the 401 really does say "this route is deployed".
-A 200 on the authed route is a finding in the other direction - an unauthenticated read, the class of bug an earlier pull request closed - and the script says so explicitly rather than just failing.
-
-`--auth-disabled` exists because dev runs `auth.Config` in `ModeNone`, where `RequireAuth` is a pass-through and 200 is correct.
-Expecting auth is the **default** so that forgetting the flag against a real deployment fails loudly instead of quietly weakening the check.
+A platform's restart command returns when it accepts the restart, not when the container is up and answering, so a green deploy step can sit in front of a site that is still booting or failing to boot.
+`node scripts/verify-deploy.mjs --url <host> --boot` is the post-deploy smoke test to run after any deploy, a self-hosted one included.
+Its checks are `/health` (polled), `/ready`, the SPA being served, a 401-vs-404 route pair that proves a route exists and enforces auth, and `--boot`, which drives headless Chrome and passes only when `#root` mounts or the bundle redirects to sign-in.
+`--boot` is the check that tells "served" from "starts", and a missing browser is a failure, never a skip.
+Pass `--auth-disabled` for a stack running with `AUTH_ENABLED=false`; expecting auth is the default so that forgetting the flag against a real deployment fails loudly.
 
 ## CSV is declared once, per domain
 
@@ -433,7 +400,7 @@ That is not cosmetic.
 While the controls were per-page, a domain without a page had no CSV anywhere in the
 app - which is how Waveforms, Services and Transports shipped exports nobody could
 reach, and Equipment, Nets and PACE went eight releases with no export at all.
-A route-conditional control cannot cover ten domains and five pages.
+A route-conditional control cannot cover eleven datasets and five pages.
 
 Three things to know before touching it:
 
@@ -458,7 +425,7 @@ catalogue and nothing else. It is not the thing to reach for on a new page.
 
 ## The slide export, where every trap is a silent one
 
-The two printable sheets export to a `.png`, the clipboard and a `.pptx`. The writer is ours:
+The printable sheets export to a `.png`, the clipboard and a `.pptx`. The writer is ours:
 `sheet-export/pptx.ts`, `zip-store.ts` and `eot.ts` are the whole thing, with no dependency, because
 `pptxgenjs` pulls `image-size`, which carries two HIGH advisories with `patched: NONE` at every
 version, so `/ship` check 2b would fail on every push from here on.
@@ -467,7 +434,7 @@ Three rules, and what unites them is that breaking any of them leaves a file tha
 local check and is wrong anyway.
 
 **The control is per-page, while CSV is in the header, and the difference is scope.**
-CSV export is *dataset* scoped: ten domains, five pages, three domains with no page at all, which
+CSV export is *dataset* scoped: eleven datasets spread across pages, tabs and panes, three of them with no page of their own, which
 is how six domains shipped exports nobody could reach. The dialog exists to answer "which dataset?".
 The sheet control is *document* scoped: it exports the DOM on screen at the scale currently set, so
 there is no such question. In the header it would manufacture one and sit permanently disabled on
@@ -486,6 +453,19 @@ because Keynote ignores embedded fonts however correct they are and PowerPoint f
 dependent about them, so **a Mac showing substituted type is not evidence about the embedding.**
 `eot.ts` writes the container; the property that keeps it cheap is that with `Flags = 0` there is no
 subsetting, no MicroType Express compression and no XOR, so the payload is the unmodified font file.
+
+**The writer now emits more than pictures and text, and the Operations decks are why.**
+`pptx.ts` also writes native shapes and groups, connectors glued to the shapes they join (`stCxn` and `endCxn`, so dragging a card drags its lines), native tables (`a:tbl`, with `gridSpan` on the first cell of a merge and `hMerge` on the cells it covers) and multi-slide decks, with each font embedded once per deck rather than once per slide.
+The Web view exports one native slide per phase and the Matrix exports an editable table, split onto "(k of n)" continuation slides to stay at 9pt or more.
+`pptx-package-checks.ts` is the structural check: it is used by the tests, parses every part and asserts that the relationship graph closes, that shape ids are unique, that every glued connector names a shape on its slide, and that every merged table cell has its covered cells.
+It is the answer to the `python-pptx` rule above for the new part types, and a new part type extends it rather than going unchecked.
+Every export that existed before the native parts was pinned byte-identical by SHA-256 tests in `pptx.test.ts`, so the additions are provably additive; a change that moves one of those hashes is a change to an old export, whatever the diff says.
+
+**A Mac render is not evidence about a native deck either.**
+Quick Look and Keynote substitute the fonts, draw `bentConnector4` and `bentConnector5` as straight lines between their ends, and widen table columns, so a deck that looks wrong there may be right and one that looks right may not be.
+There is no PowerPoint or LibreOffice on the development Mac, so how PowerPoint draws the elbows is unverified.
+`MAX_ELBOW_SEGMENTS` in `pptx-connector.ts` is the switch: lowering it from 5 to 3 writes only the elbows Keynote draws correctly, at the price of longer routes being bent into three segments on open.
+Reach for it if PowerPoint draws an elbow wrong, not before.
 
 One more, less severe but the same shape: a `wrap="none"` text box may be shrink-wrapped to its
 single line by the consumer. Harmless for left-aligned text, which still starts at the measured x;
@@ -523,8 +503,9 @@ These are not style rules. Each one has silently wasted real time here.
   `window.print` with `Page.addScriptToEvaluateOnNewDocument`, wait for the page to call it, then
   `Page.printToPDF` with `preferCSSPageSize: true`.
 - **Never `rm -rf frontend/dist` while the dev container is up.**
-  `podman inspect app` shows why: `frontend/dist` is bind-mounted to **`/app/static`**, which the
-  Go binary embeds. Deleting the directory destroys the mount's source, so `/app/static` vanishes
+  `podman inspect app` shows why: `frontend/dist` is bind-mounted to **`/app/static`**, inside the
+  container's Go module directory, so every `./...` pattern walks it (the app also serves the SPA
+  from it; nothing embeds it). Deleting the directory destroys the mount's source, so `/app/static` vanishes
   inside the container and every Go command fails with a message that names neither the mount nor
   the frontend:
 
@@ -541,6 +522,13 @@ These are not style rules. Each one has silently wasted real time here.
   red `backend lint` and looked briefly like a second, unrelated regression. If a backend step
   fails on a branch that touches no Go, check the mounts before reading any Go.
 
+- **Deleting or whole-file rewriting a bind-mounted frontend source stops `frontend-dev`.**
+  Vite exits with ENOENT when a file it watches vanishes from the mount: a `git rm`, a `write_text`, a shell redirect.
+  Every route then 502s through the backend's proxy and reads like a broken page, which is how "the compatibility page is broken" was diagnosed twice on 2026-10-09.
+  `compose.dev.yaml` now gives the service `restart: unless-stopped`, the policy the base compose already gives `postgresql` and `app`, so the container comes back by itself; a 502 that lasts more than a few seconds still means `podman start frontend-dev`.
+  Prefer the Edit tool for source files, and after any delete check `:3001` before reading an error page as a code problem.
+  Backend files have the same shape: macOS `sed -i ''` writes a new file in place of the old one, and on 2026-10-13 a test run inside `app` then failed with `open internal/domain/organization/repository.go: no such file or directory` for a file the host plainly had.
+  It cleared on its own, so treat a sudden `open ...: no such file or directory` in the container right after a `sed -i` as the mount catching up, not a missing file.
 - **`scripts/check-em-dash-ci.mjs` diffs `merge-base..HEAD`, committed only.**
   An uncommitted fix to a finding looks like it did nothing. Commit, then re-run.
 - **A squash merge breaks `git merge-base --is-ancestor`.**
@@ -581,6 +569,79 @@ These are not style rules. Each one has silently wasted real time here.
   It does not constrain a human in a terminal, the web UI, or the other checkout, so it is an
   early warning and never the thing that makes a rule true.
   Branch protection is what makes the rule true.
+- **Several sessions can share this one checkout, and each sees the others' edits.**
+  Not only plan executors: interactive sessions run side by side in the same folder, and one of them running `git checkout -b` switches the branch under all the rest.
+  Their uncommitted edits also make `verify.mjs` fail in files the current session never touched.
+  To ship without disturbing the tree, push the branch by name while it is not checked out (`git push origin <branch>`), which moves the ref and leaves the working tree alone.
+  Before reading a red local suite as a regression while another session is active, diff your own files against `main` and check mtimes; both false alarms on record were someone else's mid-edit tree.
+- **After a squash merge, a branch stacked on the merged one needs `git rebase --onto`, not a plain rebase.**
+  The old base commit is no longer an ancestor of `main` even though its content is in it, so a plain `git rebase main` replays it onto a `main` that already has those changes.
+  Keep a local ref of the base before merging the lower PR, because `delete_branch_on_merge` removes the remote one, then `git rebase --onto origin/main <local-old-base> <stacked-branch>`.
+  GitHub retargets the stacked PR to `main` by itself; check `gh pr view <N> --json baseRefName` rather than retargeting by hand.
+- **A pull that moves a manifest leaves the machine running versions the repo no longer declares.**
+  After any pull, sync both directions: `npm ci` in `frontend/` (not `npm install`, which does not guarantee the lockfile), `go mod download` and `go mod verify` in `backend/`, confirm `go mod tidy` is a no-op, and run `node scripts/preflight-versions.mjs` for the toolchain pins.
+  Upstream updates that are merely available are a dependency bot's job, not a local install.
+  Watch for PATH shadowing: a prebuilt tool installed by a package manager can hide the correct `go install` build in `~/go/bin`.
+- **The `frontend-dev` container keeps its old `node_modules` volume across `compose up --build`.**
+  A dependency added since then is in the lockfile and on the host but not in the container, and every route shows Vite's red "Failed to resolve import" overlay before any app code runs.
+  It looks exactly like a broken import on the branch.
+  When the overlay names a package rather than a repo file, run `podman exec frontend-dev sh -c "cd /app && npm install"` and then `podman restart frontend-dev`, because Vite caches the failed resolution and the install alone is not enough.
+  The volume also survives `up -d --build`, so a rebuilt image changes nothing the container actually loads.
+  When the container cannot start at all (a crash loop on a missing native binding such as `@rolldown/binding-linux-arm64-musl`), `exec` is not an option: `podman rm -f frontend-dev`, remove the volume `podman inspect` names for `/app/node_modules`, then `podman compose -f compose.yaml -f compose.dev.yaml up -d frontend`, which repopulates it from the image. Measured on 2026-10-09: serving again 10 seconds after the recreate.
+- **Commit a fix before mutation-testing its test.**
+  `git checkout <file>` restores the committed state, so reverting the mutation also silently destroys an uncommitted fix, and the baseline then fails for the wrong reason.
+  It happened twice in one session.
+  Prefer a mutation that still compiles: one that breaks the build proves only that the compiler caught it.
+- **`nodeToRestore.current.focus is not a function` across dozens of dialog tests at once is a jsdom bug, not an app bug.**
+  MUI's FocusTrap calls `.focus()` on the focus event's `relatedTarget`, and jsdom 30.1.0 set that to the `Document` instead of `null`; 30.1.1 fixed it.
+  The error names MUI and reads like a test-setup problem, which is where the time goes.
+  If it recurs after a jsdom bump, swap jsdom alone first, and check whether the dependency-bot PR was already superseded before bisecting it.
+- **`Invalid hook call` and `Cannot read properties of null (reading 'useContext')` from an MUI `SvgIcon` on the dev stack is Vite's dependency cache, not the component.**
+  The first import of a not-yet-optimized dependency chunk mid-session (on 2026-10-30, a new `@mui/icons-material` icon) makes Vite re-optimize, and the open page can end up with two React copies whose `.vite/deps` URLs carry different `?v=` hashes.
+  A plain reload does not always clear it; `podman restart frontend-dev` does, because the optimizer rebuilds its cache on start.
+  Confirm before blaming the code: `performance.getEntriesByType('resource')` filtered to `.vite/deps` shows two distinct `v=` values when it is this, and one when it is not.
+- **With auth disabled, a request used to carry no user at all, so every dev write recorded a blank actor.**
+  `created_by` was `''` on every row written through `:3001`, the audit log showed `unknown` for the actor, and a rule keyed on the actor's id could never match, which the RFI board's "only the poster resolves" was the first to run into.
+  Since 2026-10-30 the middleware attaches the same synthetic dev admin `/users/me` reports (`middleware.DevUserID`), without overwriting a user a test seeded first.
+  Rows written before that keep their blank actor; they are dev data and nothing migrates them.
+
+## Working rules
+
+How work is done here, beyond the gates above.
+These were the maintainer's standing instructions, and they are written down here so they survive a change of maintainer or machine.
+
+- **Take the broad reading of a broad word.** "Holistic", "full", "everything", "audit", "clean up" mean the whole thing, not the nearest thread already in context.
+  A dirty working tree says where work stopped, not what the task was.
+  Before calling a task done, re-read the request and check the result against it.
+- **Reproduce a bug end to end first**, as close as possible to how a user meets it, before fixing it.
+  That is what makes sure the fix addresses the real problem.
+- **Fix what you find in the same pass.** An in-scope problem found while working gets fixed, not handed back as a list of options.
+  The same goes for lint, test failures and flakiness met on the way, even when unrelated.
+  Reserve a question for what is out of scope, risky, or genuinely someone else's decision.
+- **Be picky about the UI.** When checking a change in the browser, anything that clearly looks off gets fixed, related or not.
+- **Existing code, tests and comments are deliberate decisions.** Add alongside rather than replacing, and ask before removing or rewriting anything, however much stronger the new version looks.
+  Two overlapping tests are not automatically redundant: one can assert that a value reaches the page while another asserts which cell it lands in.
+  Put "add alongside, never replace; stop and report if replacing looks right" into any prompt that hands existing code to a subagent.
+- **Do not filter data on criteria you invented.** When compiling reference data (import files, provider lists, catalog entries), criteria the requester gave are yours to apply; criteria you came up with (policy, sanctions, relevance, "odd fit") are theirs to decide.
+  Name the affected items and ask before writing the file.
+- **Trace before you tag.** Never cut a release to find out whether a fix works.
+  Trace the request end to end in code (call site, route, handler, every external service, response path), check each failure mode's handling, and name anything that cannot be tested locally before deploying.
+  Five deploys in a row chased a 502 whose cause, a streamed response the hosting platform rejected as chunked encoding, was readable in the code.
+- **Bring the whole dev stack up before implementing**: `postgresql`, `app` and `frontend-dev`, all healthy (see `.claude/commands/dev.md`).
+  The backend proxies the frontend in dev, so `:3001` is unusable without `frontend-dev` whatever the change touches, and a proxy error from a missing container looks like a regression.
+- **`CHANGELOG.md` is written by hand** as part of `/ship`.
+  No generator exists, and editing it is correct.
+- **In long Markdown, put each full sentence on its own line**, keeping normal Markdown structure.
+  Never use the em dash; use a plain `-`.
+  `scripts/check-em-dash.mjs` and the CI `style` job enforce the second.
+- **No agent attribution** anywhere: no co-author trailers, no "generated with" footers in commits, PRs, issues or docs.
+- **No human time or effort estimates.** Size work by what it touches; see `CLAUDE.md`.
+- **Work handed to a background or cloud agent must end in something durable.** A PR is.
+  A report is not: it reaches only the session that launched it and dies with that session.
+  Have the agent post its own issue comment or open its own PR, and file the tracking issue before launching, not after.
+- **Nothing wakes a session when PR checks finish.** "I will carry on when CI is green" is a promise a session cannot keep by itself.
+  At that point say so, and ask for auto-merge on the PR or a nudge.
+  Workflow runs such as the release and deploys are different: a background `gh run watch` on one does report its exit.
 
 ## The page banner is a component, not an sx snippet
 
@@ -603,6 +664,9 @@ Ten pages restated the title style inline and had drifted to three sizes and two
 `PageTitle` is Compare's size and tracking in amber, rendered as the page's `h1`; pass `noWrap` for a title built from data.
 A new banner page uses it rather than styling its own, for the same reason `PageBanner` exists at all.
 The switches beside it follow the same rule from the other side: a banner or toolbar switch is `chipToggleSty(active, true)`, whose padding matches `panelToggleSty`, so every switch in a page's top strip is one height.
+A show/hide or mode control in a strip is that same chip, never a banner button resized to look like one; banner button styles are for actions.
+A toggle that announces what pressing it will do ("View plan" and "Hide plan") reports `aria-expanded`, not `aria-pressed`, because its label already changes with its state, while a chip that selects one of several values (a phase, a view) is `aria-pressed`.
+The Operations banner is the worked example of the width budget: Join Operation moved out of it into the Participants popup, so that Edit, the share control and Print / Save PDF stay inside 1280px beside the three view chips.
 
 ## Dependency decisions that are settled
 
@@ -630,7 +694,7 @@ The switches beside it follow the same rule from the other side: a banner or too
      (running go 1.25.13; GOTOOLCHAIN=local)
      ```
 
-     That is the same failure `/ship` check 5b records from the v1.0.0 ship, walked into a
+     That is the same failure `/ship` check 5b records from an earlier ship, walked into a
      second time.
 
   So **raise go.mod first, then the pin.** go.mod went to 1.26 on 2026-08-27 for exactly
@@ -724,7 +788,7 @@ The switches beside it follow the same rule from the other side: a banner or too
 
   As of 2026-08-25 that is `8.68.0` and `>=4.8.4 <6.1.0`. TypeScript 7 cannot resolve against it without dropping `typescript-eslint` altogether, which would mean losing type-aware linting. `npm outdated` will keep offering 7.x at every `/ship`. Leave 7 alone until that peer range admits it.
 
-  **This rule previously said "TypeScript stays on 5.x" and was wrong for months.** It quoted the same `<6.1.0` range and then drew a conclusion the range does not support: `<6.1.0` admits every 6.0.x. Nobody noticed because `npm outdated` only ever surfaces `latest`, which was 7.x, so 6.0.x was never once put in front of a human. It took a Dependabot config to propose 6.0.3 and expose the gap.
+  **This rule previously said "TypeScript stays on 5.x" and was wrong for months.** It quoted the same `<6.1.0` range and then drew a conclusion the range does not support: `<6.1.0` admits every 6.0.x. Nobody noticed because `npm outdated` only ever surfaces `latest`, which was 7.x, so 6.0.x was never once put in front of a human. It took a dependency-bot config to propose 6.0.3 and expose the gap.
 
   6.0.3 was then verified rather than assumed: peers dedupe cleanly, `tsc --noEmit` is clean, ESLint keeps type-aware linting, and all 449 frontend tests pass.
 

@@ -2,10 +2,10 @@
 // Post-deploy smoke check. Answers the question a green deploy workflow does
 // not: is the new build actually serving?
 //
-// A platform's restart command returns as soon as it ACCEPTS the restart, not
-// when the container is up and answering. So a deploy step goes green while the
-// site is still on the old image, or still booting, or failing to boot at all.
-// Every deploy therefore used to end with someone remembering to go and check by
+// A platform restart returns as soon as the platform ACCEPTS it, not when the
+// container is up and answering. So the deploy job goes green while the site is
+// still on the old image, or still booting, or failing to boot at all. Every
+// deploy here has therefore ended with someone remembering to go and check by
 // hand, and "remembering to" is not a control.
 //
 // The checks, in the order they answer useful questions:
@@ -22,7 +22,7 @@
 // 404 on the nonsense path is what proves the server distinguishes them, so the
 // 401 really does say "this route is deployed". Getting 200 on step 4 is a finding
 // in the other direction: an unauthenticated read route, which is the class of bug
-// An earlier pull request existed to close.
+// PR #169 existed to close.
 //
 // Usage:
 //   node scripts/verify-deploy.mjs --url https://<host>
@@ -31,10 +31,12 @@
 //
 // `--auth-disabled` is for pointing this at local dev, where auth.Config runs in
 // ModeNone and RequireAuth is a pass-through, so step 4 legitimately answers 200.
-// It is never right for a real deployment. Expecting auth is the default precisely so that
+// It is never right for a deployed environment. Expecting auth is the default precisely so that
 // forgetting the flag fails loudly rather than quietly weakening the check.
 
 import { spawnSync } from 'node:child_process'
+
+import { probeBoot } from './lib/boot-probe.mjs'
 
 const args = process.argv.slice(2)
 function arg(name, fallback) {
@@ -62,7 +64,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 async function get(path, { redirect = 'manual' } = {}) {
   const res = await fetch(`${base}${path}`, {
     redirect,
-    headers: { 'user-agent': 'signal-suite-deploy-smoke/1' },
+    headers: { 'user-agent': 'shf-deploy-smoke/1' },
   })
   return res
 }
@@ -186,7 +188,7 @@ try {
 // ---------------------------------------------------------------------------
 // The SPA actually BOOTS, not merely that HTML was served.
 //
-// This exists because of a shipped outage. An earlier release served a blank white screen
+// This exists because of a shipped outage. v1.8.2 served a blank white screen
 // in every browser, and every check above passed against it: /health and /ready
 // were 200, `/` returned correct HTML, every asset returned 200, and the
 // 401-vs-404 pair confirmed the routes were registered. The server was fine.
@@ -196,11 +198,18 @@ try {
 // "SPA is served" and "SPA boots" are different claims, and only the first one
 // was ever being made. The difference is executing the JavaScript.
 //
-// Headless Chrome's `--dump-dom` prints the DOM AFTER scripts run, so the test
-// is simply whether the shell populated. The backend serves an empty
-// `<div id="root"></div>`; if that is still empty once the page has run, nothing
-// mounted. Measured both directions: the broken build dumps 963 bytes with the
-// empty root intact, a working build dumps tens of kilobytes without it.
+// So it loads the page in headless Chrome and checks that the JavaScript ran:
+// either #root populated, or the bundle's MSAL code navigated to the sign-in
+// host, which is what happens on a deployed environment where the probe is unauthenticated. The
+// backend serves an empty `<div id="root"></div>`; if that is still empty at the
+// deadline, nothing mounted. The mechanics live in lib/boot-probe.mjs.
+//
+// It reads the live page over the DevTools protocol on a wall-clock deadline
+// rather than `--dump-dom --virtual-time-budget`, which it used until 2026-10-25.
+// Virtual time only advances while no fetch is pending, so one slow request,
+// usually on Microsoft's sign-in page rather than ours, stalled the deploy: 41
+// minutes on 2026-10-23 before a time limit existed, a 120s failure on
+// 2026-10-25 with the site serving. boot-probe.mjs has the measurements.
 //
 // No npm dependency, deliberately - it drives a browser the CI image already
 // has. A missing browser is a FAILURE, never a skip: a boot check that quietly
@@ -209,8 +218,6 @@ try {
 // What it does NOT do: read the console. It answers "did anything render",
 // which is the question a blank page poses. A page that renders while logging
 // errors is a different check and is not this one.
-
-const EMPTY_ROOT = /<div id="root">\s*<\/div>/
 
 function findBrowser() {
   const candidates = [
@@ -224,7 +231,7 @@ function findBrowser() {
   ].filter(Boolean)
 
   for (const candidate of candidates) {
-    const probe = spawnSync(candidate, ['--version'], { encoding: 'utf8' })
+    const probe = spawnSync(candidate, ['--version'], { encoding: 'utf8', timeout: 30_000 })
     if (probe.status === 0) return { path: candidate, version: (probe.stdout || '').trim() }
   }
   return null
@@ -245,37 +252,8 @@ if (args.includes('--boot')) {
       ].join('\n      '),
     )
   } else {
-    const dump = spawnSync(
-      browser.path,
-      [
-        '--headless',
-        '--disable-gpu',
-        '--no-sandbox',
-        // Lets scripts, and the MSAL redirect, actually run before the dump.
-        '--virtual-time-budget=15000',
-        '--dump-dom',
-        `${base}/`,
-      ],
-      { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
-    )
-
-    const dom = dump.stdout ?? ''
-    if (dump.status !== 0 && dom.length === 0) {
-      record('SPA boots', false, `browser exited ${dump.status}: ${(dump.stderr ?? '').slice(0, 300)}`)
-    } else if (EMPTY_ROOT.test(dom)) {
-      record(
-        'SPA boots',
-        false,
-        [
-          `#root is still empty after the page ran (${dom.length} bytes of DOM).`,
-          'The server is serving correctly and the app is not starting. Open the',
-          'site and read the browser console; a bundler-level failure shows up',
-          'there and nowhere else.',
-        ].join('\n      '),
-      )
-    } else {
-      record('SPA boots', true, `#root populated, ${dom.length} bytes of DOM after scripts ran`)
-    }
+    const probe = await probeBoot({ browserPath: browser.path, url: `${base}/` })
+    record('SPA boots', probe.ok, probe.detail)
   }
 }
 

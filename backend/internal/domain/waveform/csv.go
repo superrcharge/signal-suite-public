@@ -22,7 +22,7 @@ var csvTable = csvtable.Table[Waveform]{
 
 	Preamble: []string{
 		"REQUIRED: abbrev (case-insensitive unique) and name.",
-		"Delete every # line and the EXAMPLE rows. Keep the header row below.",
+		"Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.",
 	},
 
 	Columns: []csvtable.Column[Waveform]{
@@ -131,23 +131,16 @@ func (s *Service) ImportWaveforms(ctx context.Context, csvBody, actor string) (i
 	}
 
 	now := time.Now().UTC()
-	created := make([]*Waveform, 0, len(parsed.Rows))
 	for i, w := range parsed.Rows {
 		w.CreatedBy = actor
 		w.UpdatedBy = actor
 		w.CreatedAt = now
 		w.UpdatedAt = now
 		if err := s.repo.Create(ctx, w); err != nil {
-			parsed.Errors = append(parsed.Errors, csvtable.RowError{
-				Row:    i + 2,
-				Name:   w.Abbrev,
-				Errors: []string{"could not be saved"},
-			})
+			parsed.Reject(i, w.Abbrev, "could not be saved")
 			continue
 		}
-		created = append(created, w)
 	}
-	parsed.Rows = created
 
-	return csvtable.ImportStatus(len(parsed.Rows), len(parsed.Errors)), parsed, nil
+	return parsed.Finish(), parsed, nil
 }

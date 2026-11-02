@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { renderWithRoute, screen, waitFor } from '@/test/utils';
+import { renderWithRoute, screen, waitFor, within } from '@/test/utils';
 import { CommsLibraryPage } from './comms-library-page';
 import { CommsLibraryPrintPage } from './comms-library-print-page';
 
@@ -62,6 +62,13 @@ const okMutation = () => ({
   mutateAsync: vi.fn().mockResolvedValue(undefined),
   isPending: false, isError: false, error: null,
 });
+// The two create writes the ownership tests read back. Hoisted because the
+// @/services factory below is.
+const createSpies = vi.hoisted(() => ({
+  service: vi.fn().mockResolvedValue(undefined),
+  transport: vi.fn().mockResolvedValue(undefined),
+  platform: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('@/services', () => ({
   useTerminals: () => ({ data: undefined, isLoading: false }),
   useKits: () => ({ data: undefined, isLoading: false }),
@@ -77,19 +84,20 @@ vi.mock('@/services', () => ({
   useCreateWaveform: () => okMutation(),
   useUpdateWaveform: () => noMutation(),
   useDeleteWaveform: () => noMutation(),
-  useCreateService: () => okMutation(),
+  useCreateService: () => ({ ...okMutation(), mutateAsync: createSpies.service }),
   useUpdateService: () => noMutation(),
   useDeleteService: () => noMutation(),
-  useCreateTransport: () => okMutation(),
+  useCreateTransport: () => ({ ...okMutation(), mutateAsync: createSpies.transport }),
   useUpdateTransport: () => noMutation(),
   useDeleteTransport: () => noMutation(),
-  useCreatePlatform: () => okMutation(),
+  useCreatePlatform: () => ({ ...okMutation(), mutateAsync: createSpies.platform }),
   useUpdatePlatform: () => noMutation(),
   useDeletePlatform: () => noMutation(),
   useLogout: () => ({ mutate: vi.fn() }),
   useUpdateSection: () => noMutation(),
   useDeleteSection: () => noMutation(),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
   REASSIGN_TO_NONE: '__none__',
 }));
 
@@ -123,17 +131,23 @@ beforeEach(() => {
     isLoading: false,
   } as unknown as ReturnType<typeof useWaveforms>);
   mockUseServices.mockReturnValue({
-    data: { services: [{ id: 's1', abbrev: 'GX', name: 'Global Express', description: '', ...stamps }], total: 1 },
+    data: {
+      services: [
+        { id: 's1', abbrev: 'GX', name: 'Global Express', description: '', owned_by: 'Viasat, Inc.', owner_country: 'United States', ...stamps },
+        { id: 's2', abbrev: 'ONEWEB', name: 'Eutelsat OneWeb', description: '', owned_by: 'Eutelsat Group', owner_country: 'France', ...stamps },
+      ],
+      total: 2,
+    },
     isLoading: false,
   } as unknown as ReturnType<typeof useServices>);
   mockUseTransports.mockReturnValue({
     data: {
       transports: [
-        { id: 't1', name: 'Verizon LTE', kind: 'cellular', provider: '', description: '', ...stamps },
+        { id: 't1', name: 'Verizon LTE', kind: 'cellular', provider: '', description: '', owned_by: 'Verizon Communications', owner_country: 'United States', ...stamps },
         // A kind outside the built-in four. Only a custom kind can show that
         // the picker reads the unfiltered list: the four defaults are offered
         // whether or not any row uses them, so filtering cannot remove them.
-        { id: 't2', name: 'Hilltop relay', kind: 'troposcatter', provider: '', description: '', ...stamps },
+        { id: 't2', name: 'Hilltop relay', kind: 'troposcatter', provider: '', description: '', owned_by: '', owner_country: '', ...stamps },
       ],
       total: 2,
     },
@@ -144,14 +158,14 @@ beforeEach(() => {
       platforms: [
         {
           id: 'p1', designation: 'F-35A', popular_name: 'Lightning II',
-          category: 'joint', kind: 'aircraft', operator: 'USAF',
+          category: ['USAF', 'USN', 'USMC'], type: 'aircraft',
           // The only haystack that spreads an array, so the only one where a
           // search can match something the row does not print as plain text.
           waveform_abbrevs: ['MADL'], equipment_ids: [], notes: '', ...stamps,
         },
         {
-          id: 'p2', designation: 'DDG-51', popular_name: '', category: 'organic',
-          kind: 'ship', operator: '', waveform_abbrevs: [], equipment_ids: [], notes: '', ...stamps,
+          id: 'p2', designation: 'DDG-51', popular_name: '', category: ['USN'],
+          type: 'ship', waveform_abbrevs: [], equipment_ids: [], notes: '', ...stamps,
         },
       ],
       total: 2,
@@ -199,14 +213,14 @@ describe('CommsLibraryPage', () => {
     renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library');
 
     expect(screen.getByText('SINCGARS')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Add to Waveform Library/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add a waveform/i })).not.toBeInTheDocument();
   });
 
   it('gates waveforms on canWriteRadio, which an rto has', () => {
     mockCanWrite = false;
     mockCanWriteRadio = true;
     renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library');
-    expect(screen.getByRole('button', { name: /Add to Waveform Library/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add a waveform/i })).toBeInTheDocument();
   });
 
   /**
@@ -235,14 +249,14 @@ describe('CommsLibraryPage', () => {
     it('lets an rto write waveforms', () => {
       asRto();
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library');
-      expect(screen.getByRole('button', { name: /Add to Waveform Library/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add a waveform/i })).toBeInTheDocument();
     });
 
     it('still shows an rto the service library, with no way to change it', () => {
       asRto();
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=services');
       expect(screen.getByText('Global Express')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Add to Service Library/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Add a service/i })).not.toBeInTheDocument();
       // Matched on the aria-label, not the glyph. The rows carry
       // `aria-label="Edit GX"` now, so a query for the bare glyph would find
       // nothing whether the gate works or not - passing vacuously, which is
@@ -259,7 +273,7 @@ describe('CommsLibraryPage', () => {
       asRto();
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=transports');
       expect(screen.getByText('Verizon LTE')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Add to Transport Library/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add a transport/i })).toBeInTheDocument();
     });
 
     // The refusal direction for transports, which viewer is now the only role
@@ -269,7 +283,7 @@ describe('CommsLibraryPage', () => {
       asViewer();
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=transports');
       expect(screen.getByText('Verizon LTE')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Add to Transport Library/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Add a transport/i })).not.toBeInTheDocument();
     });
 
     // The fourth row of the matrix, which did not exist until the platform pane
@@ -285,7 +299,7 @@ describe('CommsLibraryPage', () => {
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
 
       expect(screen.getByText('F-35A')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Add to Platform Library/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add a platform/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Edit F-35A' })).toBeInTheDocument();
     });
 
@@ -294,7 +308,7 @@ describe('CommsLibraryPage', () => {
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
 
       expect(screen.getByText('F-35A')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Add to Platform Library/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Add a platform/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument();
     });
@@ -303,12 +317,12 @@ describe('CommsLibraryPage', () => {
     // would pass every assertion above.
     it('gives an admin all three', () => {
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=services');
-      expect(screen.getByRole('button', { name: /Add to Service Library/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add a service/i })).toBeInTheDocument();
     });
 
     it('gives an admin the transport library too', () => {
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=transports');
-      expect(screen.getByRole('button', { name: /Add to Transport Library/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add a transport/i })).toBeInTheDocument();
     });
   });
 
@@ -391,7 +405,7 @@ describe('CommsLibraryPage', () => {
       await user.type(screen.getByLabelText('Search waveforms'), 'zzzznope');
 
       expect(screen.queryByText('SINCGARS')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Add to Waveform Library/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add a waveform/i })).toBeInTheDocument();
     });
 
     // A bare empty body reads as broken, and reads identically to a library
@@ -441,6 +455,7 @@ describe('CommsLibraryPage', () => {
     it('keeps a custom kind on offer while a search hides the row using it', async () => {
       const user = userEvent.setup();
       renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=transports');
+      await user.click(screen.getByRole('button', { name: /Add a transport/i }));
 
       expect(screen.getByRole('option', { name: 'Troposcatter' })).toBeInTheDocument();
 
@@ -453,8 +468,8 @@ describe('CommsLibraryPage', () => {
     });
   });
 
-  // The per-entry usage count and the named carrier list, deleted with
-  // the Waveforms and Services browse tabs in an earlier commit and brought back where a
+  // #234. The per-entry usage count and the named carrier list, deleted with
+  // the Waveforms and Services browse tabs in 67470d7 and brought back where a
   // librarian is already standing rather than as a second matrix.
   describe('library usage readout', () => {
     it('counts the assets carrying each waveform, and names them', () => {
@@ -523,6 +538,16 @@ describe('CommsLibraryPage', () => {
       expect(screen.queryByText('F-35A')).not.toBeInTheDocument();
     });
 
+    it('matches on a branch', async () => {
+      const user = userEvent.setup();
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+
+      await user.type(screen.getByLabelText('Search platforms'), 'usmc');
+
+      expect(screen.getByText('F-35A')).toBeInTheDocument();
+      expect(screen.queryByText('DDG-51')).not.toBeInTheDocument();
+    });
+
     // The only haystack of the four that spreads an array, so the only one
     // where a match can come from something the row does not print as text.
     it('matches on a carried waveform abbrev', async () => {
@@ -536,6 +561,119 @@ describe('CommsLibraryPage', () => {
     });
   });
 
+  // The library filters by what a platform is - its branches and its type -
+  // not by what it carries, which the row shows and the matrix answers.
+  describe('platform filter bar', () => {
+    const bar = () => screen.getByRole('group', { name: 'Category' }).closest('div[style]')!.parentElement!.parentElement!;
+
+    it('offers Category and Type rows, and no waveform filter', () => {
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+      expect(screen.getByRole('group', { name: 'Category' })).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'Type' })).toBeInTheDocument();
+      expect(screen.queryByText(/Filter by waveform/i)).not.toBeInTheDocument();
+      expect(within(bar()).queryByRole('button', { name: /^MADL/ })).not.toBeInTheDocument();
+    });
+
+    it('filters by a branch', async () => {
+      const user = userEvent.setup();
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+      await user.click(within(screen.getByRole('group', { name: 'Category' })).getByRole('button', { name: /^USMC 1$/ }));
+      expect(screen.getByText('F-35A')).toBeInTheDocument();
+      expect(screen.queryByText('DDG-51')).not.toBeInTheDocument();
+    });
+
+    it('filters by a type, and combines with a branch', async () => {
+      const user = userEvent.setup();
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+      await user.click(within(screen.getByRole('group', { name: 'Type' })).getByRole('button', { name: /^Ship 1$/ }));
+      expect(screen.getByText('DDG-51')).toBeInTheDocument();
+      expect(screen.queryByText('F-35A')).not.toBeInTheDocument();
+
+      await user.click(within(screen.getByRole('group', { name: 'Category' })).getByRole('button', { name: /^USAF 1$/ }));
+      expect(screen.queryByText('DDG-51')).not.toBeInTheDocument();
+      expect(screen.getByText(/No platforms with category USAF and type Ship/)).toBeInTheDocument();
+    });
+
+    it('shows carried waveforms as plain tiles, not buttons', () => {
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+      const tile = screen.getByTitle('Carried waveform');
+      expect(tile).toHaveTextContent('MADL');
+      expect(tile.tagName).toBe('SPAN');
+    });
+  });
+
+  // The category is the branches operating a platform: a closed list shown as
+  // one chip each on the row, and picked as toggles in the form.
+  describe('platform branches', () => {
+    it('shows one chip per branch on the row, spelled out on hover', () => {
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+
+      const cell = screen.getByTitle('US Marine Corps, US Navy, US Air Force');
+      expect(cell).toHaveTextContent('USMCUSNUSAF');
+    });
+
+    // OGA is filled black, which on the dark form is what an unpressed toggle
+    // looks like, so pressed it inverts.
+    it('inverts a pressed OGA toggle so it reads as selected on the dark form', async () => {
+      const user = userEvent.setup();
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+
+      await user.click(screen.getByRole('button', { name: /Add a platform/i }));
+      const oga = within(screen.getByRole('group', { name: 'Category - branch' })).getByRole('button', { name: 'OGA' });
+      await user.click(oga);
+
+      expect(oga).toHaveAttribute('aria-pressed', 'true');
+      // backgroundColor, not the background shorthand: from jsdom 30.1.3 the
+      // computed shorthand serializes every longhand, as browsers do, so it no
+      // longer equals a bare colour.
+      expect(oga).toHaveStyle({ backgroundColor: '#F2F2F2', color: '#111111' });
+    });
+
+    // Pressing changes colour only. A pressed chip that took the display chip's
+    // tighter padding, missing border and bold weight came out about 10px
+    // narrower and shifted every toggle after it.
+    it('keeps a toggle the same size pressed and unpressed', async () => {
+      const user = userEvent.setup();
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+
+      await user.click(screen.getByRole('button', { name: /Add a platform/i }));
+      const usn = within(screen.getByRole('group', { name: 'Category - branch' })).getByRole('button', { name: 'USN' });
+      // Read off the inline style: jsdom cannot resolve var() inside the
+      // border shorthand, so a computed border width means nothing here.
+      const geometry = () => {
+        const st = usn.style;
+        return [st.padding, st.borderWidth || st.border.split(' ')[0], st.fontWeight, st.letterSpacing, st.fontSize];
+      };
+      const before = geometry();
+      await user.click(usn);
+
+      expect(usn).toHaveAttribute('aria-pressed', 'true');
+      expect(geometry()).toEqual(before);
+    });
+
+    it('sends the toggled branches in precedence order, whatever order they were clicked', async () => {
+      const user = userEvent.setup();
+      createSpies.platform.mockClear();
+      renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=platforms');
+
+      await user.click(screen.getByRole('button', { name: /Add a platform/i }));
+      await user.type(screen.getByLabelText('Designation'), 'AH-1Z');
+      const picker = screen.getByRole('group', { name: 'Category - branch' });
+      await user.click(within(picker).getByRole('button', { name: 'USN' }));
+      await user.click(within(picker).getByRole('button', { name: 'USA' }));
+      await user.click(within(picker).getByRole('button', { name: 'USMC' }));
+      await user.click(within(picker).getByRole('button', { name: 'USN' }));
+      expect(within(picker).getByRole('button', { name: 'USA', pressed: true })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Add to Platform Library/i }));
+
+      await waitFor(() => {
+        expect(createSpies.platform).toHaveBeenCalledWith(
+          expect.objectContaining({ designation: 'AH-1Z', category: ['USA', 'USMC'] }),
+        );
+      });
+    });
+  });
+
   // Creating a row while a non-matching search is active used to file it
   // straight back out of view: the mutation succeeded, the form cleared, and
   // nothing appeared. Indistinguishable from a silent failure.
@@ -546,12 +684,117 @@ describe('CommsLibraryPage', () => {
 
       const box = screen.getByLabelText('Search waveforms');
       await user.type(box, 'zzzznope');
+      await user.click(screen.getByRole('button', { name: /Add a waveform/i }));
       await user.type(screen.getByPlaceholderText('SINCGARS'), 'HAVEQUICK');
       await user.click(screen.getByRole('button', { name: /Add to Waveform Library/i }));
 
       // waitFor because the clear now lands after the awaited write settles,
       // rather than synchronously inside an onSuccess callback.
       await waitFor(() => { expect(box).toHaveValue(''); });
+    });
+  });
+});
+
+// Who owns a service or transport, and where. The panes share OwnerCell for the
+// wide layout and MetaLine for the narrow one, so each layout is pinned once.
+describe('CommsLibraryPage ownership', () => {
+  const setWide = (wide: boolean) => {
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+      matches: wide, media: query, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(),
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+  };
+  beforeEach(() => { setWide(false); });
+
+  it('puts owner and country on one line beneath the row on a narrow screen', () => {
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=services');
+    expect(screen.getByText('Viasat, Inc. · United States')).toBeInTheDocument();
+  });
+
+  it('gives owner and country their own column on a wide screen', () => {
+    setWide(true);
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=services');
+    expect(screen.getByText('Eutelsat Group')).toBeInTheDocument();
+    expect(screen.getByText('France')).toBeInTheDocument();
+  });
+
+  it('folds kind, provider and owner into the transport line on a narrow screen', () => {
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=transports');
+    expect(screen.getByText('Cellular · Verizon Communications, United States')).toBeInTheDocument();
+  });
+
+  // One case per new field: the haystack is a join, and a field dropped out of
+  // it fails silently while the others keep a broader test green.
+  it('searches services on the owner country', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=services');
+
+    await user.type(screen.getByLabelText('Search services'), 'france');
+
+    expect(screen.getByText('ONEWEB')).toBeInTheDocument();
+    expect(screen.queryByText('GX')).not.toBeInTheDocument();
+  });
+
+  it('searches transports on the owner', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=transports');
+
+    await user.type(screen.getByLabelText('Search transports'), 'verizon communications');
+
+    expect(screen.getByText('Verizon LTE')).toBeInTheDocument();
+    expect(screen.queryByText('Hilltop relay')).not.toBeInTheDocument();
+  });
+
+  // The edit box is the same grid of inputs as the add form, and without its
+  // column titles a reader had to guess which box was the owner and which the
+  // country from whatever values happened to be in them.
+  it('titles the fields when an existing record is being edited', async () => {
+    const user = userEvent.setup();
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=services');
+    expect(screen.queryByText('Owned by')).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('Global Express'));
+
+    for (const h of ['Abbrev', 'Name', 'Owned by', 'Country', 'Description']) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
+    expect(screen.getByDisplayValue('Viasat, Inc.')).toBeInTheDocument();
+  });
+
+  it("sends a new service's owner and country, trimmed", async () => {
+    const user = userEvent.setup();
+    createSpies.service.mockClear();
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=services');
+
+    await user.click(screen.getByRole('button', { name: /Add a service/i }));
+    await user.type(screen.getByPlaceholderText('GX'), 'HCX');
+    await user.type(screen.getByPlaceholderText('Viasat'), ' Viasat, Inc. ');
+    await user.type(screen.getByPlaceholderText('United States'), 'United States ');
+    await user.click(screen.getByRole('button', { name: /Add to Service Library/i }));
+
+    await waitFor(() => {
+      expect(createSpies.service).toHaveBeenCalledWith(
+        expect.objectContaining({ abbrev: 'HCX', owned_by: 'Viasat, Inc.', owner_country: 'United States' }),
+      );
+    });
+  });
+
+  it("sends a new transport's owner and country, trimmed", async () => {
+    const user = userEvent.setup();
+    createSpies.transport.mockClear();
+    renderWithRoute(<CommsLibraryPage />, '/catalog/comms-library?lib=transports');
+
+    await user.click(screen.getByRole('button', { name: /Add a transport/i }));
+    await user.type(screen.getByPlaceholderText('Verizon LTE'), 'T-Mobile US Cellular');
+    await user.type(screen.getByPlaceholderText('Owned by'), ' Deutsche Telekom');
+    await user.type(screen.getByPlaceholderText('Country'), 'Germany ');
+    await user.click(screen.getByRole('button', { name: /Add to Transport Library/i }));
+
+    await waitFor(() => {
+      expect(createSpies.transport).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'T-Mobile US Cellular', owned_by: 'Deutsche Telekom', owner_country: 'Germany' }),
+      );
     });
   });
 });
@@ -585,7 +828,7 @@ describe('CommsLibraryPrintPage', () => {
     renderWithRoute(<CommsLibraryPrintPage />, '/catalog/comms-library/print?lib=services');
 
     expect(screen.getByText('GX')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Add to .* Library/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add (to .* Library|a )/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Print / Save PDF' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '← Back to library' })).toBeInTheDocument();

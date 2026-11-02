@@ -2,7 +2,7 @@
 // Seed the Nets Library with sample data for local development.
 //
 // This is NOT a migration, deliberately. `023_remove_seed_data.sql` exists
-// because seeded demo rows from migrations 006, 014 and 016 shipped to production and
+// because seeded demo rows from migrations 006, 014 and 016 shipped to a deployed environment and
 // now sit alongside real records. Seeding through the API, from a script that
 // refuses to talk to anything but localhost, cannot repeat that.
 //
@@ -39,7 +39,7 @@ const BASE = process.env.SEED_API_URL ?? DEFAULT_BASE
 
 // --- Guard: loopback host ----------------------------------------------------
 // A loopback hostname says nothing about what is *behind* the port. A
-// `kubectl port-forward svc/signal-suite-api 3001:3001` or an SSH tunnel makes a deployed
+// `kubectl port-forward svc/shf-api 3001:3001` or an SSH tunnel makes a deployed
 // environment answer on localhost:3001 and sail straight through this check.
 // That is what the auth probe in main() is for - this check only rules out the
 // obvious `SEED_API_URL=https://prod.example.com` mistake.
@@ -69,29 +69,34 @@ if (BASE !== DEFAULT_BASE && process.env.SEED_I_UNDERSTAND !== 'local') {
 // --- The data ----------------------------------------------------------------
 // Deliberately spans every shape the UI has to survive, rather than 16 identical
 // rows: simplex and split TX/RX, a range, a non-numeric placeholder, all three
-// radio types, MHz and GHz, and a mix of ROIP on and off.
+// radio types, MHz and GHz, a mix of ROIP on and off, and all three theaters:
+// 01-13 CONUS, the shared 14-16 both, and 17-20 OCONUS only.
 //
 // NET 13 carries a range in BOTH tx and rx. That is the case measured as
 // overflowing the wheel label budget (209 units against 137 available). It is
 // here on purpose - better to see it break now than after the editor has
 // hardened the layout around it.
 const NETS = [
-  { name: 'SEED NET 01', net_id: 'N01', radio_type: 'jem',  tx_freq: '30.5000',  rx_freq: '30.5000',  freq_unit: 'MHz' },
-  { name: 'SEED NET 02', net_id: 'N02', radio_type: 'jem',  tx_freq: '31.0000',  rx_freq: '41.0000',  freq_unit: 'MHz' },
-  { name: 'SEED NET 03', net_id: 'N03', radio_type: 'jem',  tx_freq: '31.5000',  rx_freq: '31.5000',  freq_unit: 'MHz' },
-  { name: 'SEED NET 04', net_id: 'N04', radio_type: 'jem',  tx_freq: '32.0000',  rx_freq: '42.0000',  freq_unit: 'MHz' },
-  { name: 'SEED NET 05', net_id: 'N05', radio_type: 'jem',  tx_freq: '32.5000',  rx_freq: '32.5000',  freq_unit: 'MHz' },
-  { name: 'SEED NET 06', net_id: 'N06', radio_type: 'jem',  tx_freq: '225.000 - 399.975', rx_freq: '', freq_unit: 'MHz' },
-  { name: 'SEED NET 07', net_id: 'N07', radio_type: 'jem',  tx_freq: 'TBD',      rx_freq: 'TBD',      freq_unit: 'MHz' },
-  { name: 'SEED NET 08', net_id: 'N08', radio_type: 'jem',  tx_freq: '34.0000',  rx_freq: '',         freq_unit: 'MHz' },
-  { name: 'SEED NET 09', net_id: 'W01', radio_type: 'mpu5', tx_freq: '1.3550',   rx_freq: '1.3550',   freq_unit: 'GHz' },
-  { name: 'SEED NET 10', net_id: 'W02', radio_type: 'mpu5', tx_freq: '1.3600',   rx_freq: '1.4600',   freq_unit: 'GHz' },
-  { name: 'SEED NET 11', net_id: 'W03', radio_type: 'mpu5', tx_freq: '1.3650',   rx_freq: '1.3650',   freq_unit: 'GHz' },
-  { name: 'SEED NET 12', net_id: 'W04', radio_type: 'mpu5', tx_freq: '2.4000 - 2.4835', rx_freq: '', freq_unit: 'GHz' },
-  { name: 'SEED NET 13', net_id: 'W05', radio_type: 'mpu5', tx_freq: '225.000 - 399.975', rx_freq: '225.000 - 399.975', freq_unit: 'MHz' },
-  { name: 'SEED NET 14', net_id: 'S01', radio_type: 'both', tx_freq: '243.000',  rx_freq: '243.000',  freq_unit: 'MHz' },
-  { name: 'SEED NET 15', net_id: 'S02', radio_type: 'both', tx_freq: '38.7500',  rx_freq: '48.7500',  freq_unit: 'MHz' },
-  { name: 'SEED NET 16', net_id: 'S03', radio_type: 'both', tx_freq: '',         rx_freq: '',         freq_unit: 'MHz' },
+  { name: 'SEED NET 01', net_id: 'N01', radio_type: 'jem',  tx_freq: '30.5000',  rx_freq: '30.5000',  freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 02', net_id: 'N02', radio_type: 'jem',  tx_freq: '31.0000',  rx_freq: '41.0000',  freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 03', net_id: 'N03', radio_type: 'jem',  tx_freq: '31.5000',  rx_freq: '31.5000',  freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 04', net_id: 'N04', radio_type: 'jem',  tx_freq: '32.0000',  rx_freq: '42.0000',  freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 05', net_id: 'N05', radio_type: 'jem',  tx_freq: '32.5000',  rx_freq: '32.5000',  freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 06', net_id: 'N06', radio_type: 'jem',  tx_freq: '225.000 - 399.975', rx_freq: '', freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 07', net_id: 'N07', radio_type: 'jem',  tx_freq: 'TBD',      rx_freq: 'TBD',      freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 08', net_id: 'N08', radio_type: 'jem',  tx_freq: '34.0000',  rx_freq: '',         freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 09', net_id: 'W01', radio_type: 'mpu5', tx_freq: '1.3550',   rx_freq: '1.3550',   freq_unit: 'GHz', theater: 'conus' },
+  { name: 'SEED NET 10', net_id: 'W02', radio_type: 'mpu5', tx_freq: '1.3600',   rx_freq: '1.4600',   freq_unit: 'GHz', theater: 'conus' },
+  { name: 'SEED NET 11', net_id: 'W03', radio_type: 'mpu5', tx_freq: '1.3650',   rx_freq: '1.3650',   freq_unit: 'GHz', theater: 'conus' },
+  { name: 'SEED NET 12', net_id: 'W04', radio_type: 'mpu5', tx_freq: '2.4000 - 2.4835', rx_freq: '', freq_unit: 'GHz', theater: 'conus' },
+  { name: 'SEED NET 13', net_id: 'W05', radio_type: 'mpu5', tx_freq: '225.000 - 399.975', rx_freq: '225.000 - 399.975', freq_unit: 'MHz', theater: 'conus' },
+  { name: 'SEED NET 14', net_id: 'S01', radio_type: 'both', tx_freq: '243.000',  rx_freq: '243.000',  freq_unit: 'MHz', theater: 'both'  },
+  { name: 'SEED NET 15', net_id: 'S02', radio_type: 'both', tx_freq: '38.7500',  rx_freq: '48.7500',  freq_unit: 'MHz', theater: 'both'  },
+  { name: 'SEED NET 16', net_id: 'S03', radio_type: 'both', tx_freq: '',         rx_freq: '',         freq_unit: 'MHz', theater: 'both'  },
+  { name: 'SEED NET 17', net_id: 'N17', radio_type: 'jem',  tx_freq: '35.0000',  rx_freq: '35.0000',  freq_unit: 'MHz', theater: 'oconus' },
+  { name: 'SEED NET 18', net_id: 'N18', radio_type: 'jem',  tx_freq: '36.0000',  rx_freq: '46.0000',  freq_unit: 'MHz', theater: 'oconus' },
+  { name: 'SEED NET 19', net_id: 'W06', radio_type: 'mpu5', tx_freq: '1.4000',   rx_freq: '1.4000',   freq_unit: 'GHz', theater: 'oconus' },
+  { name: 'SEED NET 20', net_id: 'S04', radio_type: 'both', tx_freq: '251.000',  rx_freq: '251.000',  freq_unit: 'MHz', theater: 'oconus' },
 ]
 
 async function api(path, init) {

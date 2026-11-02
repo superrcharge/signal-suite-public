@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
 
-import { render, screen, waitFor } from '@/test/utils';
+import { render, screen, waitFor, within } from '@/test/utils';
 import { ApiClientError } from '@/services/api-client';
 import { LibInput, NameAndDesc, ReferenceLibraryPane, UsageCount, UsageNames } from './ReferenceLibraryPane';
 
@@ -67,6 +67,11 @@ function setup(over: Partial<React.ComponentProps<typeof ReferenceLibraryPane<Ro
   return { onCreate, onSave, onDelete, user: userEvent.setup() };
 }
 
+/** The add form opens on request, so a test that uses it opens it first. */
+async function openAdd(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: '+ Add a thing' }));
+}
+
 const confirmSpy = vi.fn<(message?: string) => boolean>();
 beforeEach(() => {
   confirmSpy.mockReturnValue(true);
@@ -79,8 +84,9 @@ describe('ReferenceLibraryPane', () => {
   // reader with no write access never sees are marked to stay out of the
   // picture, so the slide matches the print route rather than carrying a
   // search field, a blank form and a pencil per row.
-  it('marks the search box, the add form and the row pencils to stay out of the export', () => {
-    setup();
+  it('marks the search box, the add form and the row pencils to stay out of the export', async () => {
+    const { user } = setup();
+    await openAdd(user);
     const root = document.querySelector('[data-sheet-root]');
     expect(root).not.toBeNull();
     expect(screen.getByRole('textbox', { name: 'Search things' })).toHaveAttribute('data-sheet-omit', 'inline');
@@ -136,9 +142,48 @@ describe('ReferenceLibraryPane', () => {
       const { onSave, user } = setup();
 
       await user.click(screen.getByRole('button', { name: 'Edit GX' }));
+      await user.type(screen.getByDisplayValue('Global Express'), ' 2');
       await user.click(screen.getByRole('button', { name: 'Save' }));
 
-      expect(onSave).toHaveBeenCalledWith('1', { abbrev: 'GX', name: 'Global Express' });
+      // Only the field that changed: see 'sends only what the edit changed'.
+      expect(onSave).toHaveBeenCalledWith('1', { name: 'Global Express 2' });
+      await waitFor(() => { expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument(); });
+    });
+
+    /**
+     * The draft is a copy of the row as this page fetched it. Sending all of it
+     * wrote that copy back over whatever had been saved since, on fields the
+     * edit never touched: an owner filled in by another editor was blanked by
+     * someone correcting a description on a page loaded before it.
+     */
+    it('sends only what the edit changed, so an untouched field is never written back', async () => {
+      const { onSave, user } = setup();
+
+      await user.click(screen.getByRole('button', { name: 'Edit GX' }));
+      await user.clear(screen.getByDisplayValue('GX'));
+      await user.type(screen.getByPlaceholderText('Abbrev'), 'GX2');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(onSave).toHaveBeenCalledWith('1', { abbrev: 'GX2' });
+      const [, sent] = onSave.mock.calls[0] as [string, Record<string, unknown>];
+      expect(sent).not.toHaveProperty('name');
+    });
+
+    // Save and Cancel sit at the right edge, away from the fields on the left
+    // where the choices are made.
+    it('puts Save and Cancel at the right edge of the editor', async () => {
+      const { user } = setup();
+      await user.click(screen.getByRole('button', { name: 'Edit GX' }));
+      expect(screen.getByRole('group', { name: 'Save or cancel' })).toHaveStyle({ justifyContent: 'flex-end' });
+    });
+
+    it('closes without a request when nothing was changed', async () => {
+      const { onSave, user } = setup();
+
+      await user.click(screen.getByRole('button', { name: 'Edit GX' }));
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(onSave).not.toHaveBeenCalled();
       await waitFor(() => { expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument(); });
     });
 
@@ -154,6 +199,9 @@ describe('ReferenceLibraryPane', () => {
       const { user } = setup({ onSave });
 
       await user.click(screen.getByRole('button', { name: 'Edit GX' }));
+      // A rename onto an abbrev another row holds, which is what the 409 is for.
+      await user.clear(screen.getByDisplayValue('GX'));
+      await user.type(screen.getByPlaceholderText('Abbrev'), 'WGS');
       await user.click(screen.getByRole('button', { name: 'Save' }));
 
       expect(await screen.findByText('a service with that abbreviation already exists')).toBeInTheDocument();
@@ -174,6 +222,7 @@ describe('ReferenceLibraryPane', () => {
   describe('create', () => {
     it('clears the form and the search once the write settles', async () => {
       const { onCreate, user } = setup();
+      await openAdd(user);
       const box = screen.getByLabelText('Search things');
       await user.type(box, 'zzz');
       await user.type(screen.getByPlaceholderText('Abbrev'), 'NEW');
@@ -189,6 +238,7 @@ describe('ReferenceLibraryPane', () => {
       // survive for a retry rather than being thrown away.
       const onCreate = vi.fn().mockRejectedValue(new Error('nope'));
       const { user } = setup({ onCreate });
+      await openAdd(user);
       const box = screen.getByLabelText('Search things');
       await user.type(box, 'zzz');
       await user.type(screen.getByPlaceholderText('Abbrev'), 'NEW');
@@ -200,13 +250,15 @@ describe('ReferenceLibraryPane', () => {
       expect(box).toHaveValue('zzz');
     });
 
-    it('renders a create failure inline rather than as a toast', () => {
-      setup({ createError: new Error('abbrev already exists') });
+    it('renders a create failure inline rather than as a toast', async () => {
+      const { user } = setup({ createError: new Error('abbrev already exists') });
+      await openAdd(user);
       expect(screen.getByText('abbrev already exists')).toBeInTheDocument();
     });
 
     it('creates on Enter in the add form, but not in the edit form', async () => {
       const { onCreate, onSave, user } = setup();
+      await openAdd(user);
 
       await user.type(screen.getByPlaceholderText('Abbrev'), 'NEW{Enter}');
       expect(onCreate).toHaveBeenCalledTimes(1);
@@ -238,8 +290,9 @@ describe('ReferenceLibraryPane', () => {
 
     // The headers label the add form's inputs, which share their grid template.
     // Above the list they lined up with nothing, since rows are a flex line.
-    it('draws the column headers once, in the add form', () => {
-      setup();
+    it('draws the column headers once, in the add form', async () => {
+      const { user } = setup();
+      await openAdd(user);
       const header = screen.getByText('Abbrev');
       expect(header).toBeInTheDocument();
       expect(screen.getAllByText('Abbrev')).toHaveLength(1);
@@ -341,5 +394,159 @@ describe('ReferenceLibraryPane', () => {
       await user.type(screen.getByLabelText('Search things'), 'zzzznope');
       expect(screen.getByText('No things match "zzzznope".')).toBeInTheDocument();
     });
+  });
+});
+
+// The filter bar: one row per facet, any-of within a row and all-of across
+// rows, whole values matched case-insensitively. Until 2026-09 this was a
+// single tag filter the platform pane fed with carried waveforms, driven also
+// by chips on each row; the rows no longer drive it, so the test that the
+// page scrolled back up after a row-chip click went with them.
+describe('ReferenceLibraryPane facet filter', () => {
+  interface Plat { id: string; designation: string; popular: string; waveforms: string[]; branch: string }
+  const PLATS: Plat[] = [
+    { id: 'a', designation: 'SSN-688', popular: 'Los Angeles', waveforms: ['MUOS'], branch: 'USN' },
+    { id: 'b', designation: 'S-MET', popular: 'MUTT', waveforms: ['Wave Relay', 'LOS'], branch: 'USA' },
+    { id: 'c', designation: 'MQ-9A', popular: 'Reaper', waveforms: ['los'], branch: 'USAF' },
+  ];
+
+  function setupFacets() {
+    render(
+      <ReferenceLibraryPane<Plat, Draft>
+        title="Platform Library"
+        subtitle="a subtitle"
+        noun="platforms"
+        singular="Platform"
+        items={PLATS}
+        isLoading={false}
+        searchText={p => [p.designation, p.popular, ...p.waveforms].join(' ')}
+        itemLabel={p => p.designation}
+        canWrite={false}
+        emptyDraft={{ abbrev: '', name: '' }}
+        draftOf={() => ({ abbrev: '', name: '' })}
+        isComplete={() => true}
+        renderFields={() => null}
+        renderRow={p => <div>{p.designation}</div>}
+        facets={[
+          { label: 'Waveform', valuesOf: p => p.waveforms },
+          { label: 'Branch', valuesOf: p => [p.branch], order: ['USA', 'USN', 'USAF'] },
+        ]}
+        onCreate={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        isCreating={false}
+        isSaving={false}
+        createError={null}
+        createErrorFallback=""
+        confirmDelete={() => ''}
+        saveErrorFallback=""
+        deleteErrorFallback=""
+      />,
+    );
+    return userEvent.setup();
+  }
+
+  // A substring search for LOS also returns the Los Angeles class. A facet
+  // chip means "has this value", so it matches whole values, in any case.
+  it('filters to rows with the chosen value exactly, ignoring case', async () => {
+    const user = setupFacets();
+
+    await user.click(screen.getByRole('button', { name: /^LOS 2$/ }));
+
+    expect(screen.getByText('S-MET')).toBeInTheDocument();
+    expect(screen.getByText('MQ-9A')).toBeInTheDocument();
+    expect(screen.queryByText('SSN-688')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^LOS 2$/, pressed: true })).toBeInTheDocument();
+  });
+
+  it('clicking a chosen value again shows everything', async () => {
+    const user = setupFacets();
+
+    await user.click(screen.getByRole('button', { name: /^LOS 2$/ }));
+    await user.click(screen.getByRole('button', { name: /^LOS 2$/ }));
+
+    expect(screen.getByText('SSN-688')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { pressed: true })).not.toBeInTheDocument();
+  });
+
+  it('takes any of a row and all of the rows together', async () => {
+    const user = setupFacets();
+
+    await user.click(screen.getByRole('button', { name: /^USA 1$/ }));
+    await user.click(screen.getByRole('button', { name: /^USAF 1$/ }));
+    expect(screen.getByText('S-MET')).toBeInTheDocument();
+    expect(screen.getByText('MQ-9A')).toBeInTheDocument();
+    expect(screen.queryByText('SSN-688')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Wave Relay 1$/ }));
+    expect(screen.getByText('S-MET')).toBeInTheDocument();
+    expect(screen.queryByText('MQ-9A')).not.toBeInTheDocument();
+  });
+
+  it('orders a row by its given order, and labels it by its facet', () => {
+    setupFacets();
+    const branch = screen.getByRole('group', { name: 'Branch' });
+    expect(within(branch).getAllByRole('button').map(b => b.textContent)).toEqual(['USA 1', 'USN 1', 'USAF 1']);
+  });
+
+  it('Clear resets every row, and the empty state names both filters', async () => {
+    const user = setupFacets();
+
+    await user.click(screen.getByRole('button', { name: /^MUOS 1$/ }));
+    await user.type(screen.getByRole('textbox', { name: 'Search platforms' }), 'reaper');
+    expect(screen.getByText('No platforms with waveform MUOS and match "reaper".')).toBeInTheDocument();
+
+    await user.clear(screen.getByRole('textbox', { name: 'Search platforms' }));
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByText('MQ-9A')).toBeInTheDocument();
+    expect(screen.getByText('SSN-688')).toBeInTheDocument();
+  });
+
+  // The count is the visible answer to "did the click do anything": it moves
+  // from a total the reader has already seen to "x of total".
+  it('counts what is shown against the whole library', async () => {
+    const user = setupFacets();
+    const count = () => screen.getByText((_, el) => el?.getAttribute('aria-live') === 'polite').textContent;
+
+    expect(count()).toBe('3 platforms');
+    await user.click(screen.getByRole('button', { name: /^LOS 2$/ }));
+    expect(count()).toBe('2 of 3 platforms');
+    await user.type(screen.getByRole('textbox', { name: 'Search platforms' }), 'reaper');
+    expect(count()).toBe('1 of 3 platforms');
+    await user.clear(screen.getByRole('textbox', { name: 'Search platforms' }));
+    await user.click(screen.getByRole('button', { name: /^LOS 2$/ }));
+    expect(count()).toBe('3 platforms');
+  });
+});
+
+// A tile is clicked far more often than its small pencil is found. For a writer
+// it opens the same editor; controls inside it keep their own meaning.
+describe('ReferenceLibraryPane tile click', () => {
+  it('opens the editor for a writer', async () => {
+    const { user } = setup();
+
+    await user.click(screen.getByText('GX - Global Express'));
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+  });
+
+  it('does nothing for a reader', async () => {
+    const { user } = setup({ canWrite: false });
+
+    await user.click(screen.getByText('GX - Global Express'));
+
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('leaves a control inside the tile to its own action', async () => {
+    const onChip = vi.fn();
+    const { user } = setup({
+      renderRowExtra: r => <button type="button" onClick={onChip}>{`chip ${r.abbrev}`}</button>,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'chip GX' }));
+
+    expect(onChip).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 });

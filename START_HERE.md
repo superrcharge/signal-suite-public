@@ -84,7 +84,7 @@ with-code check and a check on the built bundle. It needs Node 26 on the machine
 frontend half, and either Go plus `golangci-lint` on the machine or the development containers
 running (see below) for the backend half. A change to code is not finished until this passes.
 
-**If the assistant is Claude Code**, four hooks in [`.claude/settings.json`](.claude/settings.json)
+**If the assistant is Claude Code**, five hooks in [`.claude/settings.json`](.claude/settings.json)
 run automatically:
 
 | Hook | What it does |

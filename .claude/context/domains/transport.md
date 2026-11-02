@@ -15,6 +15,8 @@ CREATE TABLE transports (
   kind        TEXT NOT NULL DEFAULT 'other',
   provider    TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
+  owned_by      TEXT NOT NULL DEFAULT '',   -- 043
+  owner_country TEXT NOT NULL DEFAULT '',   -- 043
   created_by  TEXT NOT NULL DEFAULT '',
   updated_by  TEXT NOT NULL DEFAULT '',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -73,10 +75,10 @@ type TransportKind = string;                          // open vocabulary, delibe
 const DEFAULT_TRANSPORT_KINDS: TransportKind[];       // fiber, cellular, manet, other
 function transportKindLabel(kind): string;            // built-in label, else title-cased
 function transportKindOptions(inUse): TransportKind[];// the four defaults plus every kind in use
-interface Transport { id, name, kind, provider, description, created_by, updated_by, created_at, updated_at }
+interface Transport { id, name, kind, provider, description, owned_by, owner_country, created_by, updated_by, created_at, updated_at }
 interface ListTransportsResponse { transports: Transport[]; total: number; }
-interface CreateTransportRequest { name: string; kind?: TransportKind; provider?: string; description?: string; }
-interface UpdateTransportRequest { name?: string; kind?: TransportKind; provider?: string; description?: string; }
+interface CreateTransportRequest { name: string; kind?: TransportKind; provider?: string; description?: string; owned_by?: string; owner_country?: string; }
+interface UpdateTransportRequest { name?: string; kind?: TransportKind; provider?: string; description?: string; owned_by?: string; owner_country?: string; }
 ```
 
 `transportKindLabel` is not decoration. Without it a kind prints as its raw column value, so MANET reads "manet" on a sheet a squadron hands to aircrew. Kinds outside the built-in four are title-cased, so a custom `line of sight` reads `Line Of Sight`.
@@ -96,24 +98,32 @@ The update hook calls `apiClient.patch`, matching the `PATCH` route. This mirror
 **Transport Library pane** (`components/catalog/TransportLibraryPane.tsx`, mounted by `/catalog/comms-library`):
 - One of four panes, beside `WaveformLibraryPane`, `ServiceLibraryPane` and `PlatformLibraryPane`. The first three used to live in `catalog-editor-page.tsx`, reached by ⊞ rail buttons that swapped one into the centre column; those buttons and the `EditorPanel` state behind them are gone. All four are now configurations of `ReferenceLibraryPane` - see `equipment.md`'s "The Comms Library" section, which documents the shared screen and what each wrapper still owns.
 - **This is the domain the move mattered most for.** Transports have no browse tab - a chip row does not grow a fourth entry gracefully - so before the Comms Library route existed, the only way to read this table at all was to hold a write role, open the editor and know to click a small button. It is now readable by anyone the app admits.
-- Full list with inline create, edit and delete. Each row shows name, kind label, provider and description; the create row carries a name field, a `VocabField`, a provider field and a description field, and sits above the list. Name, provider and description carry `maxLength` (`TRANSPORT_NAME_MAX` 120, `TRANSPORT_PROVIDER_MAX` 120, `TRANSPORT_DESC_MAX` 500), so a field stops accepting characters rather than the save being rejected. The column headers sit inside the Add form and share the inputs' grid, so they line up with the inputs and are shown only to a writer. The rows beneath are a flex strip of name+description / 90px / 110px in their own order, and name and description share the fixed two-line `NameAndDesc` cell every pane uses.
+- Full list with inline create, edit and delete. Each row shows name, kind label, provider, owner and description; the form carries a name field, a `VocabField`, provider, owned-by, owner-country and description fields, and the Add form sits above the list. Text fields carry `maxLength` (`TRANSPORT_NAME_MAX` 120, `TRANSPORT_PROVIDER_MAX` 120, `TRANSPORT_OWNED_BY_MAX` 120, `TRANSPORT_COUNTRY_MAX` 60, `TRANSPORT_DESC_MAX` 500), so a field stops accepting characters rather than the save being rejected. The column headers share the inputs' grid, so they line up with the inputs, and are drawn over the edit form as well as the Add form. At `md` and up the rows are a flex strip of name+description / 90px kind / 110px provider / 150px `OwnerCell` in their own order; below `md` the three trailing cells fold into one `MetaLine` beneath the name, because together they left a phone-width name zero wide and pushed the row buttons off screen.
+- **`owned_by` / `owner_country`** (migration 043) record who ultimately controls the provider and where it is headquartered - T-Mobile US is owned by Deutsche Telekom, Germany. Same definitions as the services library; see `service.md`. Kind, provider and owner are all set in the description's type rather than mono caps: plain data in a different face from its neighbours read as if it meant something.
 - **Those write controls gate on `canWritePace`**, matching the transport routes: a transport is a non-SATCOM path a PACE tier names, and nothing in the equipment domain has ever referenced one, so the writer set follows the card rather than the catalog. This file previously said `canWrite`, which was wrong in both directions - it excluded the `rto` and `planner` roles the routes admit. `authz.md`'s pane table is the authority. The pane stays readable, since reads are open to every role, and each pane gating itself is what lets the Comms Library route be ungated.
+- The header's `+` menu carries an **Add Transport** row gated on the same `canWritePace`, navigating to `/catalog/comms-library?lib=transports`. A planner therefore sees it beside Add Net and Add Platform, the three things the card names.
 - **The search box filters the rows; the kind dropdown deliberately reads the unfiltered list.** Which kinds the library holds is not a claim the search is making, so hiding a row must not withdraw its kind from the picker. `comms-library-page.test.tsx` pins this with a custom kind - a built-in one cannot show it, since the four defaults are offered whether any row uses them or not.
 - `VocabField` (`components/shf-form/VocabField.tsx`) is a `<select>` whose last entry is `+ Add new kind…`, carrying the sentinel value `__add__`. Choosing it swaps the select for a text input so a kind outside the list can be typed. This mirrors the `__create__` / `Create section…` entry in the Section select on `terminal-drawer.tsx`. It was `KindField` here plus a near-copy in the platform pane; the wording of that last entry is a prop rather than a constant, because `help-content.test.ts` keys a written exception on this exact literal - the step names an `<option>`, not a button.
 - A `<datalist>` combobox was tried first and rejected: typing filters the suggestions away exactly when the user wants to see them, so the list appeared not to open at all.
 - A custom kind already on the record is appended to the options when rendering, or the select would silently blank a value it does not recognise.
 - Delete prompts first, and says that removing a library entry leaves existing PACE cards unaffected.
+- **A save sends only the fields the edit changed**, so an edit opened on a stale page cannot write back over a field someone else saved since. The mechanism lives in the shared pane; see `equipment.md`'s "The Comms Library" section.
 
 ## Relationship to the PACE domain
 
-Nothing in the PACE domain references transports yet. Wiring the library into the PACE tier pickers, including the `pace_tiers.transport_id` foreign key, is `_project/plans/pace-tier-options.md`.
+A PACE tier can name a transport. Migration `034_create_pace_tiers.sql` gives `pace_tiers` a `transport_id` foreign key to `transports(id)`, `ON DELETE SET NULL`, used when the tier's `source` is `transport`, and `pace/repository.go` joins `transports` to read the transport's name onto the tier.
+That foreign key is why a transport delete is never refused: the tier keeps its row and loses the link.
 
-This domain is independent in the same way the waveform domain is: it imports nothing from equipment or pace, and neither imports from it.
+The Go packages stay independent in the same way the waveform domain's do: this one imports nothing from equipment or pace, and neither imports from it. The link is in the schema, not the code.
+
+Operation participants store `waveform_abbrevs`, `service_abbrevs` and `transport_ids` by value (columns on `operation_participants`), and the library delete guards do not check them, so removing an entry here leaves a participant pointing at it. See `operation.md`.
 
 ## CSV export / import
 
-`GET /api/v1/export/transports`, `GET /api/v1/transports/import/template`, `POST /api/v1/transports/import` (admin/editor).
+`GET /api/v1/export/transports`, `GET /api/v1/transports/import/template`, `POST /api/v1/transports/import` (admin, editor, rto or planner, the same writer set as the other write routes).
 
 **`kind` carries no enum on the CSV path**, because `DefaultKinds` is a suggestion rather than a closed set - a squadron running a path nobody anticipated adds its own.
 The column leans on `NormaliseKind` instead, so `"  Line Of Sight "` imports as `line of sight` and the list cannot fill up with the same kind spelled three ways.
 A blank kind becomes `other` rather than a row error, matching what the drawer does: a client that does not care about the category still gets a usable row.
+
+`owned_by` and `owner_country` are importable columns after `provider`; the template's preamble states what each means, so an import applies the same definition as the pane.

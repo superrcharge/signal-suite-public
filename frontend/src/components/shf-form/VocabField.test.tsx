@@ -34,7 +34,8 @@ const optionTexts = () =>
 describe('VocabField', () => {
   it('offers the vocabulary plus the add entry, and no empty option by default', () => {
     setup();
-    // Platform's configuration: category and kind always carry a value.
+    // The default, with no emptyLabel: every entry carries a value. The fixture
+    // is transport kinds; the platform pane no longer uses this control.
     expect(optionTexts()).toEqual(['fiber', 'cellular', 'manet', '+ Add new…']);
   });
 

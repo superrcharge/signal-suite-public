@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { useMemo } from 'react';
 import type { Equipment } from '@/types';
 import { compareNatural } from '@/utils';
 import {
@@ -10,6 +10,7 @@ import {
   paramIsVisible,
 } from './compare-params';
 import { chipToggleSty, panelToggleSty } from './chip-styles';
+import { ChipRow } from './chip-row';
 
 interface CompareControlsProps {
   catalog: Equipment[];
@@ -244,34 +245,6 @@ function EquipmentGroup({
   );
 }
 
-/**
- * A labelled gutter and a wrapped row of chips.
- *
- * Shared by both panels rather than written twice, because they are open at
- * the same time and stacked: the equipment panel used a heading above its
- * chips while the parameter panel put its band in a gutter beside them, so
- * with both open the two sets of chips started at different x down one
- * column. Pass an empty gutter to keep the indent without a label.
- */
-function ChipRow({ gutter, children }: { gutter: string; children: React.ReactNode }) {
-  // The gutter word is the row's name, so a screen reader announces "SATCOM,
-  // group" before the chips rather than a run of unlabelled buttons. An
-  // empty gutter (a continuation row) names nothing, so it claims no group.
-  const labelId = useId();
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 5 }}>
-      <span id={labelId} style={gutterSty}>{gutter}</span>
-      <div
-        role={gutter ? 'group' : undefined}
-        aria-labelledby={gutter ? labelId : undefined}
-        style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
 const panelSty: React.CSSProperties = {
   padding: '14px 28px 18px',
   borderBottom: '1px solid var(--shf-graphite-700)',
@@ -296,32 +269,6 @@ function byBand(params: CompareParam[]): { band?: string; params: CompareParam[]
   }
   return [...groups.entries()].map(([band, ps]) => ({ band: band || undefined, params: ps }));
 }
-
-/** Outer height of one chip: 10.5px text on a 1.35 line box, 3px of padding
- *  each side, 1px of border each side. The gutter matches it. */
-const CHIP_H = Math.round(10.5 * 1.35) + 3 * 2 + 2;
-
-const gutterSty: React.CSSProperties = {
-  // Fixed, and wide enough for the longest gutter word in either panel
-  // ("SATCOM"), so both panels indent identically when open together.
-  width: 76,
-  flexShrink: 0,
-  display: 'inline-flex',
-  alignItems: 'center',
-  height: CHIP_H,
-  fontFamily: 'var(--font-mono)',
-  // Sized off the chip's height rather than its text, so the label reads as
-  // the same weight of object as the row it labels instead of as a caption
-  // floating beside it.
-  fontSize: CHIP_H - 8,
-  lineHeight: 1,
-  fontWeight: 700,
-  letterSpacing: '0.02em',
-  textTransform: 'uppercase',
-  // Not amber. Amber is what a selected chip is, everywhere on this surface,
-  // so an amber label beside unselected chips reads as a selection state.
-  color: 'var(--shf-graphite-300)',
-};
 
 const emptySty: React.CSSProperties = {
   fontFamily: 'var(--font-body)',

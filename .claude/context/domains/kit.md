@@ -21,7 +21,7 @@ Valid types: `remote` | `ifk` | `atk`. Required on create (a kit with no type ca
 - **Row order:** `ORDER BY name COLLATE natural_sort, id` - names sort with embedded numbers ordered numerically, so `REMOTE-KIT 2` precedes `REMOTE-KIT 10` instead of the plain-text `1, 10, 11, 2, 9`. The collation comes from migration `038_natural_sort_collation.sql` and is applied only in `ORDER BY`, never as a column collation: search is `name ILIKE ...` in the `WHERE` clause and the uniqueness rule is `UNIQUE btree (LOWER(name))`, both of which take the column's own collation and are deliberately untouched. The `, id` tiebreaker keeps the order total, which plain `LIMIT`/`OFFSET` pagination needs. The export query is separate (`FindForExport`) and carries the same clause, so the CSV matches the screen. The frontend's `compareNatural` in `@/utils` is the client-side twin for the pages that sort in JavaScript.
 - **Stat strip:** by status (Total / Available / ALERT / On Mission / Reserved / INOP), identical mechanic to Terminals - counts from the backend `status_counts` map, sticky, click to filter. Status-based (not type-based) because each type has its own `?type=` page.
 - **Type filter:** `ToggleButtonGroup` (All / Remote / IFK / ATK), multi-select, hydrated from `?type=` (CSV) via `useEffect`. Server-side - joined as `type=remote,ifk` → `GET /api/v1/kits?type=...`, filtered with `type = ANY($n)`.
-- **Type badge** colors: remote cyan `#39d3f0`, ifk magenta `#e879f9`, atk teal `#2dd4bf`. Neither may use a **reserved** color: `#1f6feb` belongs to Total tiles and `#a371f7` to the On Mission status (which is also C SQD's section color) - both render in the same dashboard column as the type tiles. Defined in `TYPE_STYLES` (`kits-page.tsx`) and `KIT_TYPE_COLORS` (`dashboard-page.tsx`); **change both together or the table and dashboard disagree.**
+- **Type badge** colors: remote cyan `#39d3f0`, ifk magenta `#e879f9`, atk teal `#2dd4bf`. Neither may use a **reserved** color: `#1f6feb` belongs to Total tiles and `#a371f7` to the On Mission status (which is also C SQD's section color) - both render in the same Stats column as the type tiles. Defined in `TYPE_STYLES` (`kits-page.tsx`) and `KIT_TYPE_COLORS` (`stats-page.tsx`); **change both together or the table and the Stats page disagree.**
 - **Section filter** via `?sections=` (plural, comma-separated), same as Terminals.
 - **Search:** `?search=` substring `ILIKE` across `name`, `owner`, `location`, `notes` (2-char frontend minimum, 400ms debounce).
 - **Assigned-to** = full owner (name/email/phone) now. Azure/Entra identity lookup is a deferred follow-up, not built.
@@ -51,34 +51,23 @@ Kits FK `sections`, so **deleting a section must reassign kits too**, alongside 
 ## CSV import / export
 
 - **Template:** `GET /api/v1/kits/import/template` - **no auth**. Registered on the raw app in `routes.go` **before** `kits.Use(auth.RequireAuth())` so the group's prefix-matched auth middleware (which would otherwise gate `/api/v1/kits/*`) doesn't run - the template handler terminates the chain first. Distinct path from Terminals' global `/api/v1/import/template` to avoid collision. Frontend template `href` must match `/api/v1/kits/import/template`.
-- **Import:** `POST /api/v1/kits/import` accepts `{ csv }`. Per-row validation: name required, **type required + valid**, section/status valid if present, booleans parsed via `parseBool` (true/false/yes/no/1/0/blank; blank = false; anything else = row error), no duplicate names. Bulk-inserts valid rows via `CopyFrom`; returns per-row errors. Template example rows: `EXAMPLE REMOTE`, `EXAMPLE MINIMAL`.
+- **Import:** `POST /api/v1/kits/import` accepts `{ csv }`. Per-row validation: name required, **type required + valid**, section/status valid if present, booleans parsed via `csvtable.SetBool` (`shared/csvtable/value.go`; true/false/yes/no/y/n/t/f/1/0/blank; blank = false; anything else = row error), no duplicate names. Bulk-inserts valid rows via `CopyFrom`; returns per-row errors. Template example rows: `EXAMPLE REMOTE`, `EXAMPLE MINIMAL`.
 - **Export:** `GET /api/v1/export/kits` (read-only, any auth). Query params `sections` / `statuses` / `types` / `columns` (all CSV). `type` is accepted as an alias for `types` and merged with it, matching the singular the list endpoint and the sidebar deep-links already use - see the export section of `terminal.md` for why the alias exists. Filters travel as a named `kit.ExportFilter` struct rather than positional slices. `ExportableColumns` canonical order: name, type, status, black, secret, topsecret, section, owner, owner_email, owner_phone, location, notes, updated_by, updated_at, created_at. Booleans render as `true`/`false`. Filename `signal-suite-kits-YYYYMMDD.csv`.
 
 ## Routes
 
 `GET /api/v1/kits` (list) · `GET /api/v1/kits/:id` · `POST /api/v1/kits` (writer) · `PATCH /api/v1/kits/:id` (writer) · `DELETE /api/v1/kits/:id` (writer) · `GET /api/v1/kits/import/template` (no auth) · `POST /api/v1/kits/import` (writer) · `GET /api/v1/export/kits`.
 
-## Dashboard
+## Stats
 
-`useKits({ limit: 1000 })` client-side aggregation. Three blocks.
+Moved to `dashboard.md` (the Stats page, its layout primitives and its kit strips).
 
-**Layout primitives** (shared with Terminals and Contracts, all in `dashboard-page.tsx`):
+## Who sees Kits
 
-- `BlockLabel` - heading that sits **above** its bordered block, never inside. Every heading on the page uses it (13px / 800 / `text.primary`).
-- `StatPanel` - the bordered box holding one row of tiles. No rules inside it.
-- `StripRow` - grid of `repeat(columns, minmax(0, 1fr))`, `columns` defaulting to `PANEL_COLUMNS` (5). Every row in a domain uses the **same column count**, so a 5-tile status row and a 4-tile type row share column widths and align; the shorter row just leaves trailing columns empty. Do not switch this to one column per tile - that misaligns the rows, which is what it exists to prevent.
-
-Terminals and Kits sit **side by side** (`flex`, `gap: 3`, stacking on mobile) for status and type, matching the by-section row beneath them: terminals left, kits right, same column x.
-
-Tiles whose `sub` is an **array** render it as a list to the right of the count, top-aligned with the label; a string `sub` renders beneath the count. Kit type tiles pass a single-element array for exactly this reason. `Total` tiles carry no subtext.
-
-`SectionRow` reserves `minWidth: '2ch'` with `tabular-nums` on its count so the following hyphen lands at the same x on every row regardless of 1- vs 2-digit totals.
-
-- **Kits by Status** strip - Available / ALERT / On Mission / Reserved / INOP, same colors and subtext as the `/kits` page strip so the two agree. ALERT rolls up `alert` + `alert-blue` + `alert-green`. No Total tile (it heads the type strip, matching Terminals). Tiles link to `/kits?status=<key>` (the page hydrates `?status=` on mount).
-- **Kits by Type** strip - Total / Remote / IFK / ATK, structurally identical to Terminals by Type. Subtext on each type is that type's available count. Tiles link to `/kits?type=<value>`.
-- **Kits by Section** sits beside "Terminals by Section" in a `flex` row separated by `gap: 3` only - no vertical divider (each panel has its own border and heading). Stacks on mobile.
-
-Dashboard tests scope `getByText` to a strip via `getByText('<heading>').nextElementSibling` - the terminal and kit strips share several bucket subtexts, so unscoped queries collide. Both reuse the generalized `SectionRow` component (now takes `items` / `itemOrder` / `itemLabels` props instead of hard-coded terminal models) - kits pass `remote/ifk/atk`, terminals pass model families.
+Terminals, Kits and By Section are offered only to admin and editor, on the `canSeeTrackers` flag (`admin || editor`, `contexts/auth-context.tsx`).
+The flag gates the Kits entry in `NAV_ITEMS` (`components/layouts/nav-items.tsx`, so the header page menu and the Dashboard tiles drop it) and the sidebar's Terminals and Kits groups (`components/layouts/sidebar.tsx`).
+It is a decluttered view, not a boundary: the reads stay open to every authed user and the route answers by URL.
+See `dashboard.md`.
 
 ## Files
 

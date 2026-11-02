@@ -24,7 +24,7 @@ func TestErrorsAreCoded(t *testing.T) {
 		{ErrPlatformNotFound, "PLATFORM_NOT_FOUND", http.StatusNotFound},
 		{ErrPlatformDesignationExists, "PLATFORM_DESIGNATION_EXISTS", http.StatusConflict},
 		{ErrPlatformInvalidCategory, "PLATFORM_INVALID_CATEGORY", http.StatusBadRequest},
-		{ErrPlatformInvalidKind, "PLATFORM_INVALID_KIND", http.StatusBadRequest},
+		{ErrPlatformInvalidType, "PLATFORM_INVALID_TYPE", http.StatusBadRequest},
 		{ErrPlatformInternalError, "PLATFORM_INTERNAL_ERROR", http.StatusInternalServerError},
 		// A constructor rather than a var: the message names the bad abbrevs.
 		{ErrPlatformUnknownWaveform([]string{"NOPE"}), "PLATFORM_UNKNOWN_WAVEFORM", http.StatusBadRequest},
@@ -48,42 +48,50 @@ func TestErrorsAreCoded(t *testing.T) {
 	}
 }
 
-// Normalisation is what buys back the consistency an open vocabulary gives up.
-// The blank fallbacks are the migration's column defaults.
-func TestNormaliseVocab(t *testing.T) {
-	cats := map[string]string{
-		"Joint":        "joint",
-		"  COALITION ": "coalition",
-		"":             "joint",
-		"   ":          "joint",
+// Category is closed: branch names and abbrevs in any case map to the
+// abbrev, repeats collapse, the result is in precedence order whatever order
+// it arrived in, and anything else is reported back as given.
+func TestNormaliseCategory(t *testing.T) {
+	cases := []struct {
+		in, want, unknown []string
+	}{
+		{[]string{"usaf", " USN ", "Marine Corps"}, []string{"USMC", "USN", "USAF"}, nil},
+		{[]string{"OGA", "Coast  Guard", "usa"}, []string{"USA", "USCG", "OGA"}, nil},
+		{[]string{"USN", "navy", ""}, []string{"USN"}, nil},
+		{nil, []string{}, nil},
+		{[]string{"USAF", "joint", "SOCOM"}, []string{"USAF"}, []string{"joint", "SOCOM"}},
 	}
-	for in, want := range cats {
-		if got := NormaliseCategory(in); got != want {
-			t.Errorf("NormaliseCategory(%q) = %q, want %q", in, got, want)
-		}
-	}
-	kinds := map[string]string{
-		"Ship":             "ship",
-		"ground_vehicle":   "ground vehicle",
-		"ground   station": "ground station",
-		"":                 "aircraft",
-	}
-	for in, want := range kinds {
-		if got := NormaliseKind(in); got != want {
-			t.Errorf("NormaliseKind(%q) = %q, want %q", in, got, want)
+	for _, c := range cases {
+		got, unknown := NormaliseCategory(c.in)
+		if !slices.Equal(got, c.want) || !slices.Equal(unknown, c.unknown) {
+			t.Errorf("NormaliseCategory(%q) = %v, %v; want %v, %v", c.in, got, unknown, c.want, c.unknown)
 		}
 	}
 }
 
-func TestIsValidVocab(t *testing.T) {
-	for _, v := range []string{"joint", "fixed relay site", "uas-group-3"} {
-		if !IsValidVocab(v) {
-			t.Errorf("IsValidVocab(%q) = false, want true", v)
+// Normalisation still lands the ways people type a listed type on it; the
+// blank fallback is the migration's column default.
+func TestNormaliseType(t *testing.T) {
+	good := map[string]string{
+		"Ship":             "ship",
+		"ground_vehicle":   "ground vehicle",
+		"ground   station": "ground station",
+		"UAV":              "uav",
+		"":                 "aircraft",
+	}
+	for in, want := range good {
+		if got, ok := NormaliseType(in); !ok || got != want {
+			t.Errorf("NormaliseType(%q) = %q, %v; want %q, true", in, got, ok, want)
 		}
 	}
-	for _, v := range []string{"", strings.Repeat("a", MaxVocabLen+1), "<script>", "-leading", "a/b"} {
-		if IsValidVocab(v) {
-			t.Errorf("IsValidVocab(%q) = true, want false", v)
+}
+
+// Closed since migration 045: anything that is not one of Types is refused,
+// including the free-text value that prompted closing it.
+func TestNormaliseTypeRefusesAnythingElse(t *testing.T) {
+	for _, v := range []string{"launch platform", "fixed relay site", "uas-group-3", "<script>"} {
+		if _, ok := NormaliseType(v); ok {
+			t.Errorf("NormaliseType(%q) accepted it; want refused", v)
 		}
 	}
 }
@@ -122,20 +130,19 @@ func TestCreatePlatformStoresNormalisedValues(t *testing.T) {
 	resp := &dto.CreatePlatformResponse{}
 	status, err := svc.CreatePlatform(context.Background(), &dto.CreatePlatformRequest{
 		Designation:     "  F-35A ",
-		Category:        "Joint",
-		Kind:            "",
-		Operator:        " USAF ",
+		Category:        []string{"usaf", "USN", "Marine Corps"},
+		Type:            "",
 		WaveformAbbrevs: []string{"L16", "l16", "MADL"},
 	}, resp)
 
 	if status != http.StatusCreated || err != nil {
 		t.Fatalf("status = %d, err = %v; want 201 / nil", status, err)
 	}
-	if created.Designation != "F-35A" || created.Operator != "USAF" {
-		t.Errorf("stored %+v; want trimmed designation and operator", created)
+	if created.Designation != "F-35A" {
+		t.Errorf("stored %+v; want trimmed designation", created)
 	}
-	if created.Category != "joint" || created.Kind != "aircraft" {
-		t.Errorf("category/kind = %q/%q, want joint/aircraft", created.Category, created.Kind)
+	if !slices.Equal(created.Category, []string{"USMC", "USN", "USAF"}) || created.Type != "aircraft" {
+		t.Errorf("category/type = %v/%q, want [USMC USN USAF]/aircraft", created.Category, created.Type)
 	}
 	if !slices.Equal(created.WaveformAbbrevs, []string{"L16", "MADL"}) {
 		t.Errorf("abbrevs = %v, want [L16 MADL]", created.WaveformAbbrevs)
@@ -149,7 +156,7 @@ func TestCreatePlatformStoresNormalisedValues(t *testing.T) {
 // `.map` on it throws.
 func TestResponseListsAreNeverNull(t *testing.T) {
 	r := toResponse(&Platform{})
-	if r.WaveformAbbrevs == nil || r.EquipmentIDs == nil {
+	if r.WaveformAbbrevs == nil || r.EquipmentIDs == nil || r.Category == nil {
 		t.Errorf("toResponse left a nil list: %+v", r)
 	}
 }
@@ -158,15 +165,15 @@ func TestCreatePlatformRejectsMalformedVocab(t *testing.T) {
 	svc := NewService(&MockRepository{})
 
 	status, err := svc.CreatePlatform(context.Background(),
-		&dto.CreatePlatformRequest{Designation: "X", Category: "<b>"}, &dto.CreatePlatformResponse{})
+		&dto.CreatePlatformRequest{Designation: "X", Category: []string{"USAF", "joint"}}, &dto.CreatePlatformResponse{})
 	if status != http.StatusBadRequest || !errors.Is(err, ErrPlatformInvalidCategory) {
 		t.Errorf("category: status = %d, err = %v; want 400 / %v", status, err, ErrPlatformInvalidCategory)
 	}
 
 	status, err = svc.CreatePlatform(context.Background(),
-		&dto.CreatePlatformRequest{Designation: "X", Kind: "a/b"}, &dto.CreatePlatformResponse{})
-	if status != http.StatusBadRequest || !errors.Is(err, ErrPlatformInvalidKind) {
-		t.Errorf("kind: status = %d, err = %v; want 400 / %v", status, err, ErrPlatformInvalidKind)
+		&dto.CreatePlatformRequest{Designation: "X", Type: "launch platform"}, &dto.CreatePlatformResponse{})
+	if status != http.StatusBadRequest || !errors.Is(err, ErrPlatformInvalidType) {
+		t.Errorf("type: status = %d, err = %v; want 400 / %v", status, err, ErrPlatformInvalidType)
 	}
 }
 
@@ -186,7 +193,7 @@ func TestCreatePlatformRejectsDuplicateDesignation(t *testing.T) {
 
 func TestUpdatePlatformAppliesOnlyTheFieldsSent(t *testing.T) {
 	existing := &Platform{
-		ID: "1", Designation: "F-35A", Category: "joint", Kind: "aircraft",
+		ID: "1", Designation: "F-35A", Category: []string{"USAF"}, Type: "aircraft",
 		WaveformAbbrevs: []string{"L16"}, Notes: "keep me",
 	}
 	var updated *Platform
@@ -294,7 +301,7 @@ func platformSvc(lib *mockLibrary, created *bool) *Service {
 			return nil
 		},
 		FindByIDFunc: func(_ context.Context, _ string) (*Platform, error) {
-			return &Platform{ID: "p1", Designation: "F-35A", Category: "joint", Kind: "aircraft"}, nil
+			return &Platform{ID: "p1", Designation: "F-35A", Category: []string{"USAF"}, Type: "aircraft"}, nil
 		},
 	}
 	svc := NewService(repo)

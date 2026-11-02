@@ -272,8 +272,14 @@ func (s *Service) UpdateEquipment(ctx context.Context, req *dto.UpdateEquipmentR
 	if req.DocNumber != nil {
 		e.DocNumber = req.DocNumber
 	}
+	// An empty URL is the clear signal (DeletePhoto sends it). Stored as NULL
+	// rather than "", so "no photo" has one representation in the column.
 	if req.PhotoURL != nil {
-		e.PhotoURL = req.PhotoURL
+		if *req.PhotoURL == "" {
+			e.PhotoURL = nil
+		} else {
+			e.PhotoURL = req.PhotoURL
+		}
 	}
 	if req.Make != nil {
 		e.Make = req.Make

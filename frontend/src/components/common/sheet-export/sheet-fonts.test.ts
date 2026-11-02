@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { SHEET_FONT_FACES, resetSheetFontCache, sheetFontEmbedCss } from './sheet-fonts';
+import {
+  OPERATION_DECK_FONTS, PPTX_EMBEDDED_FONTS, SHEET_FONT_FACES, resetSheetFontCache, sheetFontEmbedCss, sheetFontFiles,
+} from './sheet-fonts';
 
 function fakeFetch(failFor: string[] = []) {
   return vi.fn((input: RequestInfo | URL) => {
@@ -87,5 +89,37 @@ describe('sheetFontEmbedCss', () => {
 
     expect(a).toBe(b);
     expect(fetcher).toHaveBeenCalledTimes(SHEET_FONT_FACES.length);
+  });
+});
+
+describe('sheetFontFiles', () => {
+  /** An sfnt by its first four bytes, which is all the fetch checks, so a 404's HTML never ships as a font. */
+  const sfnt = new Uint8Array([0x00, 0x01, 0x00, 0x00, 9, 9, 9, 9]);
+  const serving = (failFor: string[] = []) => vi.fn((input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    return Promise.resolve(failFor.some((f) => url.includes(f))
+      ? ({ ok: false, status: 404 } as Response)
+      : ({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(sfnt.buffer.slice(0)) } as unknown as Response));
+  });
+
+  it('fetches the PACE families by default, as it always did', async () => {
+    const fetcher = serving();
+    const families = await sheetFontFiles(fetcher);
+    expect(families.map((f) => f.typeface)).toEqual(PPTX_EMBEDDED_FONTS.map((f) => f.typeface));
+    expect(families.map((f) => f.typeface)).not.toContain('IBM Plex Mono');
+  });
+
+  it('fetches the operation deck\'s own families when asked, one request per distinct file, and hands a one-file family the same array twice', async () => {
+    const fetcher = serving();
+    const families = await sheetFontFiles(fetcher, OPERATION_DECK_FONTS);
+    expect(families.map((f) => f.typeface)).toEqual(['Oswald', 'IBM Plex Mono']);
+    expect(families[0]!.regular).toBe(families[0]!.bold);
+    expect(families[1]!.regular).not.toBe(families[1]!.bold);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it('drops a family it cannot fetch whole rather than embedding half of it', async () => {
+    const families = await sheetFontFiles(serving(['IBMPlexMono-SemiBold']), OPERATION_DECK_FONTS);
+    expect(families.map((f) => f.typeface)).toEqual(['Oswald']);
   });
 });

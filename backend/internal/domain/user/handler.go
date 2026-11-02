@@ -126,23 +126,28 @@ func (h *Handler) canAccessUser(c fiber.Ctx, targetUserID string) bool {
 }
 
 func (h *Handler) GetCurrentUser(c fiber.Ctx) error {
+	if !h.authEnabled {
+		// Auth is bypassed - return the dev admin so the UI functions fully.
+		// Checked before Locals, because the middleware now attaches the same
+		// identity as a middleware.AuthUser that is not a *User, so the type
+		// assertion below would otherwise turn every dev request into a 500.
+		// The id and name are the middleware's, so the actor a dev write
+		// records is the user the UI says is signed in.
+		now := time.Now().UTC()
+		return c.Status(http.StatusOK).JSON(response.Success(&dto.GetUserResponse{
+			User: dto.UserResponse{
+				ID:          middleware.DevUserID,
+				Email:       middleware.DevUserEmail,
+				Name:        middleware.DevUserName,
+				Roles:       []string{"admin"},
+				Preferences: dto.PreferencesResponse{Theme: "dark"},
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			},
+		}))
+	}
 	authUser := middleware.GetCurrentUser(c)
 	if authUser == nil {
-		if !h.authEnabled {
-			// Auth is bypassed - return a dev admin so the UI functions fully.
-			now := time.Now().UTC()
-			return c.Status(http.StatusOK).JSON(response.Success(&dto.GetUserResponse{
-				User: dto.UserResponse{
-					ID:          "00000000-0000-0000-0000-000000000001",
-					Email:       "dev@localhost",
-					Name:        "Dev Admin",
-					Roles:       []string{"admin"},
-					Preferences: dto.PreferencesResponse{Theme: "dark"},
-					CreatedAt:   now,
-					UpdatedAt:   now,
-				},
-			}))
-		}
 		return c.Status(http.StatusUnauthorized).JSON(response.Err(ErrUserNotFound))
 	}
 

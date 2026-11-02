@@ -1,5 +1,5 @@
 /**
- * Shared terminal constants used by the terminals page, drawer, and dashboard.
+ * Shared terminal constants used by the terminals page, drawer, and Stats page.
  */
 
 /** PoP (point of presence) pin options - Starshield (mini/hp) only. */

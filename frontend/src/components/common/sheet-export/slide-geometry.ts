@@ -22,6 +22,13 @@ export const PACE_SLIDE: SlideSize = { w: 11, h: 8.5 };
 export const CATALOG_SLIDE: SlideSize = { w: 8.5, h: 11 };
 
 /**
+ * Widescreen 16:9, PowerPoint's own default size. Content that is wider than
+ * it is tall, such as one slide per phase, fills it better than Letter, which
+ * is the print shape and not a screen's.
+ */
+export const WIDE_SLIDE: SlideSize = { w: 13.333, h: 7.5 };
+
+/**
  * Output pixels per CSS pixel.
  *
  * Passed explicitly on every call. `html-to-image` otherwise defaults to

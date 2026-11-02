@@ -1,4 +1,5 @@
 export { DashboardPage } from './dashboard-page';
+export { StatsPage } from './stats-page';
 export { UsersPage } from './users-page';
 export { NotFoundPage } from './not-found-page';
 export { KitsPage } from './kits-page';

@@ -47,26 +47,35 @@ This is check 0 because it is the only check that compiles nothing.
 It takes about two seconds and it exists to stop the pattern that made three consecutive deploys painful: a pin raised in one file, CI red six minutes later, a fix that breaks a different job, repeat.
 See "Versions are checked before CI, not by CI" in AGENTS.md for the full table of what it holds.
 
-## 0b. Scope - decides whether checks 7-11 apply
+## 0b. Scope - decides whether checks 7-11 and the release apply
 
 ```bash
 node /REPO/scripts/ship-scope.mjs
 ```
 
-It prints a line reading either `DOC_CHECKS=required` or `DOC_CHECKS=skip`, and it always exits 0.
+It prints two verdicts, a line reading `DOC_CHECKS=required` or `DOC_CHECKS=skip` and a line reading `RELEASE=required` or `RELEASE=skip`, and it always exits 0.
 This is not a gate and cannot fail a push.
 
-- **`DOC_CHECKS=required`** - run checks 7, 8, 9, 10 and 11 in full, exactly as written.
+- **`DOC_CHECKS=required`** - run checks 7, 8, 9, 10, 10b and 11 in full, exactly as written.
 - **`DOC_CHECKS=skip`** - do not run them. Report each one in the summary table as `skipped - out of scope`.
 
-**Read the line the script printed. Do not decide this yourself.**
-Whether a diff touches a domain is a question with one right answer and the script computes it; inferring it produces a different answer on different runs, which is the failure this step exists to remove.
+- **`RELEASE=required`** - run the release sequence below in full, Steps 1-8.
+- **`RELEASE=skip`** - run Steps 1-3 and stop after the merge. No CHANGELOG version entry, no tag, no deploy.
 
-Every other check runs regardless. Only 7 through 11 are scoped.
+**Read the lines the script printed. Do not decide either of these yourself.**
+Whether a diff touches a domain, or anything the image is built from, is a question with one right answer and the script computes it; inferring it produces a different answer on different runs, which is the failure this step exists to remove.
 
-Why: checks 7-11 audit prose that is keyed to domains and pages - README's Features section, structure.md's trees, the two load-on-demand tables, the domain context files, and the memory index.
-A dependency bump or a workflow edit cannot move any of those facts, so walking all five of them for `chore(deps): bump x/crypto` reads a lot of documentation to reach a conclusion that was available from the file list.
+Every other check runs regardless. Only 7 through 11, 10b included, are scoped.
+
+Why: checks 7-11 audit prose that is keyed to domains and pages - README's Features section, structure.md's trees, the two load-on-demand tables, the domain context files, the diagrams, and the memory index.
+A dependency bump or a workflow edit cannot move any of those facts, so walking all six of them for `chore(deps): bump x/crypto` reads a lot of documentation to reach a conclusion that was available from the file list.
 That was the most expensive part of this audit and the part least often relevant.
+
+Why the release is scoped: the image is built by `Dockerfile.prod` from `frontend/` and `backend/` only, and a deploy runs that image.
+A diff touching none of those, such as a docs, script or workflow change, builds a byte-identical image.
+Tagging it mints a version whose notes describe nothing that runs, and deploying it restarts the service to serve what it already served.
+Test files are excluded from the trigger too, because `go build` never compiles a `_test.go` and the app never imports a test.
+A docs, script or workflow change takes effect on merge anyway, and the next real release carries it.
 
 ## 1. TypeScript
 ```bash
@@ -169,6 +178,17 @@ For each test file that mocks `@/services` with a closed object (not `importOrig
 - PASS if all mocks are complete.
 - FAIL if any hook is missing - add the stub and re-run tests.
 
+## 3b. Required GitHub secrets
+
+No workflow in this repo reads a repository or environment secret: `release.yml` pushes to GHCR and creates the GitHub Release with the default `GITHUB_TOKEN`, and `ci.yml` and `security.yml` need nothing.
+
+```bash
+grep -rn "secrets\." .github/workflows/*.yml
+```
+
+- PASS if the only matches are `secrets.GITHUB_TOKEN`.
+- NEEDS REVIEW if a workflow now reads any other secret.
+
 ## 3c. CSV coverage (common CI trap)
 ```bash
 node /REPO/scripts/check-csv-coverage.mjs
@@ -181,20 +201,6 @@ node /REPO/scripts/check-csv-coverage.mjs
   ```bash
   grep -o '"#[0-9]*' /REPO/backend/internal/domain/csv-manifest.json | sort -u
   ```
-
-## 3b. Required GitHub secrets
-
-No workflow in this repo reads a repository or environment secret. `release.yml` pushes to GHCR
-and creates the GitHub Release with the default `GITHUB_TOKEN`, and `ci.yml` and `security.yml`
-need nothing. Confirm that is still true:
-
-```bash
-grep -rn "secrets\." .github/workflows/*.yml
-```
-
-- PASS if the only matches are `secrets.GITHUB_TOKEN`.
-- NEEDS REVIEW if a workflow now reads any other secret: it must be documented in
-  `.github/workflows/README.md` and added in the repo's Settings before the workflow can pass.
 
 ---
 
@@ -243,7 +249,7 @@ grep -rn "@latest" /REPO/.github/workflows/
 ```
 
 An unpinned `go install ...@latest` is a build that changes under you with no commit.
-This broke the Backend job during the v1.0.0 ship: `golangci-lint@latest` released
+This broke the Backend job during an earlier ship: `golangci-lint@latest` released
 v2.13.1 requiring Go >= 1.26, while `backend/go.mod` (the version the job installs)
 pins 1.25.13, so the install step began failing on every PR with no Go change
 involved. Pin to the version the dev container runs, so CI and local agree.
@@ -268,7 +274,7 @@ PostToolUse hook only sees files Claude writes, so it misses a hand edit, a comm
 from another machine, or a GitHub web-UI edit. The CI job runs `if:
 github.event_name == 'pull_request'`, so it only fires once a branch is pushed and
 a PR exists. A long branch therefore banks violations with nothing to report them:
-v1.0.0 arrived at its first push carrying 42.
+one early release arrived at its first push carrying 42.
 
 Only added lines are in scope. Do not mass-substitute pre-existing ones in a file
 you touched. Where the character is a literal a caller compares against rather
@@ -320,6 +326,8 @@ Read `AGENTS.md` and `.claude/context/project.md`.
 **Reverse check (backend → context):** For every directory in `backend/internal/domain/` that has user-visible features, confirm:
   1. A `.claude/context/domains/<domain>.md` file exists.
   2. That domain has a row in both the `AGENTS.md` load-on-demand table and the `project.md` load-on-demand table.
+
+Two directories are named differently from their context file: `radionet` maps to `net.md` and `satcomservice` maps to `service.md`. Do not report either as missing.
 
 **FAIL if any gap exists in either direction - create the missing file or row before continuing.** This is documentation debt that compounds; do not defer it.
 
@@ -421,7 +429,7 @@ Print this table after all checks complete:
 | # | Check | Status | Notes |
 |---|---|---|---|
 | 0 | Version preflight | ... | ... |
-| 0b | Scope | ... | `DOC_CHECKS=required` or `DOC_CHECKS=skip` |
+| 0b | Scope | ... | `DOC_CHECKS=` and `RELEASE=`, each `required` or `skip` |
 | 1 | TypeScript | ... | ... |
 | 1b | Backend build + tests | ... | ... |
 | 1c | ESLint | ... | ... |
@@ -431,11 +439,11 @@ Print this table after all checks complete:
 | 2c | Dependency currency (Dependabot + npm outdated) | ... | ... |
 | 2d | Built bundle graph | ... | the only check that reads build output |
 | 3 | Service mock coverage | ... | ... |
-| 3c | CSV coverage | ... | ... |
 | 3b | Required secrets | ... | ... |
+| 3c | CSV coverage | ... | ... |
 | 4 | Git status | ... | ... |
 | 5 | Debug leftovers | ... | ... |
-| 5b | CI workflow version consistency | ... | ... |
+| 5b | Hardcoded versions and values | ... | ... |
 | 5c | Em dash gate | ... | ... |
 | 6 | Migrations | ... | ... |
 | 7 | README | ... | scoped by 0b |
@@ -456,9 +464,10 @@ Print "Ship audit complete - X passed, Y need review, Z failed." when done.
 
 ## Release sequence (run after audit passes)
 
-**Documentation must be current before the release sequence starts.** If checks 7–10 produced any FAIL, fix them, re-run those checks, and confirm PASS before continuing. Shipping code with stale docs is the same as shipping broken code - the next session will waste time rediscovering what already exists.
+**Documentation must be current before the release sequence starts.** If checks 7-11 produced any FAIL, fix them, re-run those checks, and confirm PASS before continuing. Shipping code with stale docs is the same as shipping broken code - the next session will waste time rediscovering what already exists.
 
-After the ship audit passes with zero FAILs, follow these steps in order every time. Do not skip or reorder.
+After the ship audit passes with zero FAILs, follow these steps in order. Do not skip or reorder.
+If check 0b printed `RELEASE=skip`, stop after Step 3: leave `CHANGELOG.md` alone and do not tag or deploy. Otherwise run all eight.
 
 ### Step 1 - Branch, commit, push, PR
 ```powershell
@@ -476,29 +485,91 @@ Go to `https://github.com/superrcharge/signal-suite-public/actions` and wait for
 
 ### Step 3 - Merge the PR
 
+**The head branch is deleted on every merge, whatever flags you pass.**
+The repo setting `delete_branch_on_merge` is on, so GitHub deletes the branch itself as part of the merge:
+
+```bash
+gh api repos/superrcharge/signal-suite-public --jq .delete_branch_on_merge   # true
+```
+
+Merge with plain `--squash`.
+`--delete-branch` adds nothing on the remote, and it also deletes your local branch, which the stacked case below needs:
+
+```bash
+gh pr merge <N> --squash
+```
+
 **Before merging, check whether any open PR is stacked on this branch:**
 
 ```bash
 gh pr list --repo superrcharge/signal-suite-public --base <this-branch> --state open
 ```
 
-- If that returns nothing, merge with `--delete-branch`.
-- **If it returns any PR, do NOT pass `--delete-branch`.** Deleting a branch that another
-  open PR targets makes GitHub auto-close that PR, and **a PR closed that way cannot be
-  reopened** - not by `gh pr reopen`, and not even after restoring the branch. The only
-  recovery is opening a replacement PR, which loses the review thread and the board card.
+If that returns nothing, merge and move on.
 
-  Merge without the flag, then for each stacked PR: rebase its branch onto the new `main`,
-  force-push, retarget it with `gh pr edit <N> --base main`, and only then delete the old
-  branch.
+If it returns a PR, GitHub **retargets it to this branch's base** (normally `main`) when it deletes the branch.
+The stacked PR stays open.
+Observed once: merging a PR deleted its branch, and the stacked PR's timeline recorded `automatic_base_change_succeeded` three seconds later; the stacked PR then merged normally.
 
-```powershell
-gh pr merge --squash                    # a PR is stacked on this branch
-gh pr merge --squash --delete-branch    # nothing is stacked on it
-```
+The retarget does not rebase anything.
+Because the lower PR was squashed, `main` holds a new commit with none of the lower branch's original commits, so the retargeted PR shows those commits again in its diff until its branch is rebased.
+Do this for each stacked PR:
 
-The same rule applies to deleting any branch by hand: check for open PRs pointing at it
-first. This is not recoverable after the fact, so the check is cheap relative to the cost.
+1. **Before merging the lower PR, keep a local ref of its branch.**
+   The remote branch disappears on merge and a `git fetch --prune` then removes `origin/<this-branch>` too, which leaves nothing to rebase from.
+
+   ```bash
+   git fetch origin
+   git branch -f stack-base/<this-branch> origin/<this-branch>
+   ```
+
+2. **Merge the lower PR** with `gh pr merge <N> --squash`.
+
+3. **Confirm the stacked PR was retargeted**, not closed:
+
+   ```bash
+   gh pr view <stacked-N> --repo superrcharge/signal-suite-public --json state,baseRefName
+   ```
+
+   Expect `"state":"OPEN"` and `"baseRefName":"main"`.
+   Do not retarget by hand with `gh pr edit --base` first; check what GitHub did.
+
+4. **Rebase only the stacked PR's own commits onto the new `main`:**
+
+   ```bash
+   git fetch origin
+   git rebase --onto origin/main stack-base/<this-branch> <stacked-branch>
+   ```
+
+5. **Confirm the tree is the one that was verified.**
+   `origin/<stacked-branch>` is still the pre-rebase head that CI ran against, so compare against it before pushing:
+
+   ```bash
+   git diff --stat origin/<stacked-branch> <stacked-branch>
+   ```
+
+   Empty is the expected answer when `main` gained nothing but the lower PR's squash.
+   If it lists files, every one of them must also appear in `git diff --stat stack-base/<this-branch> origin/main`, meaning `main` moved independently.
+   In that case the tree is no longer the one that was verified, so run `node scripts/verify.mjs` on it before pushing.
+   A file in the first list that is not in the second means the rebase changed the stacked work itself; stop and read it.
+
+6. **Force-push with lease, then confirm the base once more:**
+
+   ```bash
+   git push --force-with-lease origin <stacked-branch>:<stacked-branch>
+   gh pr view <stacked-N> --repo superrcharge/signal-suite-public --json baseRefName,commits
+   ```
+
+   The PR should now list only its own commits.
+   Delete the helper ref with `git branch -D stack-base/<this-branch>`.
+
+**What closes a stacked PR instead.**
+The retarget above is what GitHub's own merge-time deletion does.
+A branch deleted any other way, by `gh pr merge --delete-branch`, by `git push origin --delete`, or by hand in the UI, can make GitHub close every open PR that targets it rather than retarget it, and **a PR closed that way cannot be reopened**: not by `gh pr reopen`, and not after restoring the branch.
+The only recovery is a replacement PR, which loses the review thread.
+That has happened: a branch was deleted right after merge, the stacked PR's timeline recorded `base_ref_deleted` and then `closed`, and it had to be replaced by a new PR.
+The same applies if `delete_branch_on_merge` is ever switched off and branches go back to being deleted by hand.
+So before deleting any branch yourself, run the `gh pr list --base` check above first.
 
 ### Step 4 - Add the CHANGELOG entry **in the PR**, not on main
 
@@ -598,6 +669,8 @@ See "A green deploy is not a live deploy" in AGENTS.md.
   once per increment produces a wall of `vX.Y.0` tags across one body of work and hides
   which release actually mattered.
 - **Major bump** for a breaking change or a milestone.
+  A major number is given to a milestone, not held in reserve for a future rename: a rename
+  takes whatever number is next when it ships.
 
 When a queue of related work is in flight, such as a sequence of handoff plans against the
 same feature, every one of them is a patch. The minor bump, if it is warranted at all,

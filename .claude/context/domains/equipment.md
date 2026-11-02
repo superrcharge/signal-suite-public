@@ -94,12 +94,12 @@ interface CompatibilityComparison {
 `equipment_id` is set by the editor when radios are selected via inventory chips. Legacy entries created before this field existed will have `equipment_id: undefined`.
 
 **Domain layout:** `backend/internal/domain/equipment/`
-- `model.go` - `Equipment`, `EquipmentSummary`
+- `model.go` - `Equipment`
 - `errors.go` - `ErrEquipmentNotFound`, `ErrEquipmentIDExists`, `ErrEquipmentInternalError`
 - `dto/request.go`, `dto/response.go`
 - `repository.go` - `FindAll(ctx, terminalType, search)`, `FindByID`, `Create`, `Update`, `Delete`, `ExistsID`
 - `service.go` - `ListEquipment`, `GetEquipment`, `CreateEquipment`, `UpdateEquipment`, `DeleteEquipment`. Top-level scalar columns use PATCH-style updates (nil fields ignored), but the `data` JSONB is **full-replace** on update - see API gotcha below.
-- `handler.go` - standard CRUD + `UploadPhoto` (multipart → Azure Blob → update `photo_url`)
+- `handler.go` - standard CRUD + `UploadPhoto` (multipart → Azure Blob → update `photo_url`) + `DeletePhoto` (clears `photo_url` through `UpdateEquipment`, which deletes the blob)
 - `routes.go` - registers routes (see API below)
 - `validation.go`
 
@@ -109,7 +109,7 @@ interface CompatibilityComparison {
 - `Download(ctx, blobName string) (io.ReadCloser, string, error)` - downloads blob using the same credential; returns body + content-type
 - `BlobNameFromURL(rawURL string) (string, error)` - extracts the blob name from a stored URL by stripping the service URL and container prefix
 - `Delete(ctx, blobName string) error` - removes a blob. An already-absent blob is reported as success, which is what lets a partially-failed delete converge on retry
-- Handler passes `nil` blob client when `AZURE_STORAGE_URL` is empty; `UploadPhoto` and `GetPhoto` return 501 in that case
+- Handler passes `nil` blob client when `AZURE_STORAGE_URL` is empty; `UploadPhoto`, `GetPhoto` and `DeletePhoto` return 501 in that case
 
 **Two interfaces sit in front of the client** so the failure paths are testable without Azure:
 - `PhotoStore` (`handler.go`) - `UploadStream` + `Download` + `Delete` + `BlobNameFromURL`; the handler's field type
@@ -123,6 +123,7 @@ interface CompatibilityComparison {
 
 - **Delete equipment** - blob goes **before** the row. The row holds the only pointer, so blob-first fails safe: the record survives pointing at a missing image and a retry converges. Row-first would strand the blob with nothing left to locate it by. A blob failure returns 500 and leaves the row intact.
 - **Replace photo** - uploads mint a fresh UUID name and never overwrite, so `UpdateEquipment` deletes the superseded blob after the row commits. **Guarded on an actual URL change**, because this is the generic edit path - without that comparison, editing a nickname would destroy the photo. Best effort: logged, never fails the request.
+- **Remove photo** - `DeletePhoto` sends `UpdateEquipment` an empty `photo_url`, which the service stores as NULL, so the superseded-blob cleanup above is what deletes the image. Same order as a replace: row first, blob best effort after. It also means the removal writes the ordinary `update` audit entry, with a `photo_url` change to empty. In the editor it is a small red × on the photo's corner (`aria-label="Remove photo"`), shown only with a photo and `canEdit`, behind a `window.confirm`. The editor patches its draft to `''` on success as well as invalidating the query, because Save sends the draft's `photo_url` and a stale draft would write the deleted blob's URL back.
 - **Failed upload** - if the row update fails after the upload, `UploadPhoto` deletes the blob it just wrote, so no failure path leaves an unreferenced object.
 - A `photo_url` outside the configured container is logged and skipped rather than blocking the delete.
 
@@ -139,6 +140,7 @@ If the storage account has soft-delete retention (1 day is a sensible setting), 
 | DELETE | `/api/v1/equipment/:id` | editor+ | |
 | GET | `/api/v1/equipment/:id/photo` | any | Proxy - fetches the stored blob via Managed Identity, streams bytes with correct `Content-Type`. 404 if no photo, 501 if blob not configured. |
 | POST | `/api/v1/equipment/:id/photo` | editor+ | Multipart `photo` field (JPEG/PNG/WebP). Uploads to Azure Blob, updates `photo_url`, returns `{ url }`. Returns 501 if blob not configured. |
+| DELETE | `/api/v1/equipment/:id/photo` | editor+ | Clears `photo_url` and deletes the blob. 204 on success, 404 if the record has no photo, 403 for rto on a non-radio record, 501 if blob not configured. |
 
 ### PATCH gotcha - `data` is full-replace, not merge
 
@@ -159,6 +161,7 @@ The frontend editor's `useUpdateEquipment` mutation always sends the complete dr
 - `useUpdateEquipment()` - invalidates list + detail
 - `useDeleteEquipment()` - invalidates list
 - `useUploadEquipmentPhoto()` - POSTs `FormData` to `/:id/photo`, invalidates list + detail
+- `useDeleteEquipmentPhoto()` - DELETEs `/:id/photo`, invalidates list + detail. Every `EquipmentPhoto` caller guards on `photo_url`, so the refetch is what takes the image off screen
 
 **CSS tokens:** `frontend/src/styles/catalog-tokens.css` - loaded lazily on catalog routes. Defines `--shf-amber`, `--shf-paper`, `--shf-graphite-*`, `--font-display` (Oswald), `--font-condensed` (Barlow Condensed), `--font-body` (IBM Plex Sans), `--font-mono` (IBM Plex Mono). Fonts are self-hosted via `@font-face` declarations pointing to TTF files bundled at `public/fonts/` - no external CDN dependency (required for air-gapped deployments).
 
@@ -181,7 +184,7 @@ The frontend editor's `useUpdateEquipment` mutation always sends the complete dr
 - `index.ts` - barrel export.
 
 **Pages:**
-- `catalog-page.tsx` - browse view in `MainLayout`; search + All/SATCOM/Radio filter chips + a facet sidebar (see "The facet sidebar" below) + `BrowseGrid`. **Sort order on All tab: SATCOM items alphabetically, then Radio items alphabetically.** Sorting happens client-side via `compareNatural` from `@/utils`, not in SQL - so embedded numbers order numerically (`VSAT 2` before `VSAT 10`), matching the `natural_sort` collation the API uses elsewhere. The active tab is URL state via `?type=` (`satcom` / `radio`; unrecognized values fall back to All, and All omits the param), so the dashboard catalog tiles deep-link into it. **Every tab is a `terminal_type` filter, and that is new.** `waveforms` and `services` were also tabs, and they were a different kind of thing: they replaced `BrowseGrid` with a read-only view of a reference table. Both retired to `/catalog/comms-library`, which browses and edits them; the two old URLs redirect there rather than falling back to All, so a deep link does not silently land on the equipment grid. See `waveform.md` and `service.md` for what was lost with them.
+- `catalog-page.tsx` - browse view in `MainLayout`; search + All/SATCOM/Radio filter chips + a facet sidebar (see "The facet sidebar" below) + `BrowseGrid`. **Sort order on All tab: SATCOM items alphabetically, then Radio items alphabetically.** Sorting happens client-side via `compareNatural` from `@/utils`, not in SQL - so embedded numbers order numerically (`VSAT 2` before `VSAT 10`), matching the `natural_sort` collation the API uses elsewhere. The active tab is URL state via `?type=` (`satcom` / `radio`; unrecognized values fall back to All, and All omits the param), so the Stats catalog tiles deep-link into it. **Every tab is a `terminal_type` filter, and that is new.** `waveforms` and `services` were also tabs, and they were a different kind of thing: they replaced `BrowseGrid` with a read-only view of a reference table. Both retired to `/catalog/comms-library`, which browses and edits them; the two old URLs redirect there rather than falling back to All, so a deep link does not silently land on the equipment grid. See `waveform.md` and `service.md` for what was lost with them.
 - `catalog-sheet-page.tsx` - single sheet in `MainLayout`. Layout: 240px inventory sidebar (`CATALOG_RAIL_W`; All/SATCOM/Radio tabs, click-to-navigate, highlights active item) + main canvas. Banner: a rail-width `RailTitle` ("Data Sheet", rendered as a `div` because the sheet's own `HeroBlock` carries the record name as the page's `h1`), Back to Catalog, scale slider (min 45%, max = auto-fit - single-page constraint enforced), relative % display (auto = 100%), Reset chip, then right-justified `DocumentActions`: Edit (writers), Full Screen, share, Print / Save PDF. `viewZoom` fills the canvas width; `autoScale` is computed after `document.fonts.ready` from actual `scrollHeight`. `userScale` resets to null on item navigation.
 - `catalog-print-page.tsx` - chrome-free full-screen data sheet at `/catalog/:id/print`. Reads `?scale=` and `?custom=1` query params. After fonts + images ready, injects `@media print` CSS with `transform: scale(N)` and conditionally calls `window.print()` when `?print=1`. Hard single-page constraint via `overflow: hidden` on wrapper. The wrapper also carries `background: var(--shf-paper)`, because it *is* the printed page and was the only page box in the app with no paper under it - without it the paper changed colour where the sheet ended, 253px up from the foot on a sparse record.
 - `catalog-editor-page.tsx` - 3-pane editor (240px `CATALOG_RAIL_W` list + remainder form + 800px preview while shown). Equipment list pane has **All/SATCOM/Radio tabs** with SATCOM-first sort on All. **Equipment IDs are auto-derived slugs** from nomenclature on create (`slugify`: lowercase, non-alphanum → dash, max 80 chars). Section 03 (Radio waveforms) uses **toggle chips from the global waveform library** - orphaned entries surface as removable gray chips. Section 03b uses **inventory radio chips** (all radio-type equipment except current) linked by `equipment_id`; toggling a radio on pre-populates its waveforms from that radio's own Section 03 data (hard requirement). Preview pane shows a red-tinted warning banner below the paper when content overflows the page boundary. Gated: non-writers see redirect message. **Radio Section 04 Range field:** compound control - number input + inline `mi` / `km` toggle buttons; switching units converts the value in-place (`× 1.60934` mi→km, `× 0.62137` km→mi). Saves both `range` (number) and `range_unit` (`'mi'` | `'km'`) into `standard_specs`. Records without `range_unit` default to `'mi'` on display.
@@ -225,6 +228,8 @@ flag can give.
 ## Deployment notes
 
 Photo upload and display are both handled by the backend using the container's Azure identity - no public blob access. The storage account and the `equipment-photos` container are created outside this repo; the identity the container runs as needs `Storage Blob Data Contributor` on it, and `AZURE_STORAGE_URL` is the account's blob endpoint.
+
+The storage **API version** is not automatic. Each `azblob` release hardcodes the `x-ms-version` it sends, and a storage endpoint that lags the public clouds rejects a newer one, so `azblob` is held at v1.8.0 (`GO_MODULE_HOLDS` in `scripts/verify.mjs`). A later `azblob` release broke every photo and emblem request against such an endpoint while the public cloud kept working. Storage 500s are logged with the underlying error, which is the only place that error appears.
 
 If the default name `<prefix>equipment` is globally taken in the target cloud, override `azureStorageAccountName` in the environment parameter file. Storage account names are immutable after creation, so pick once and keep it.
 
@@ -401,12 +406,13 @@ from the editor, so it was already a self-contained screen living in the wrong f
 **They are now one screen configured four ways.** `components/catalog/ReferenceLibraryPane.tsx`
 owns the toolbar, the search, the add form, the three-way empty state, the inline row editor and
 all five handlers; `{Waveform,Service,Transport,Platform}LibraryPane.tsx` are the configurations.
-Four things to know before touching it:
+Five things to know before touching it:
 
 - **`canWrite` is a required prop with no default, and each wrapper passes its own flag** - `canWriteRadio`, `canWrite`, `canWritePace`, `canWritePace`. That per-pane self-gating is what lets this route be ungated. A default of true would fail open into a public write surface; a default of false would fail silently closed and get "fixed" by someone passing true.
 - **The shared pane owns save and delete error reporting**, and that is forced rather than chosen: it owns `editingId`, so it decides whether the editor closes, so it must await the write and branch on rejection. Create keeps an inline red note instead, so nothing double-reports. Before this, a refused save left the editor open with no message on two of the four panes, and a refused delete was invisible on three.
-- **`fieldGrid` and `renderRowExtra` are optional, and platform is why.** Its form is two grids and two chip strips rather than a row of cells, so it passes no `fieldGrid` and gets no column-header strip; its row is two levels, so the chip strip is `renderRowExtra`. Those two escape hatches have tests of their own in `ReferenceLibraryPane.test.tsx`, written before platform converted precisely so the conversion could not quietly change the prop shape.
-- **Two differences between the panes are deliberate and survive.** The em-dash fallback for a blank field is not uniform (waveform and service fall back on the name, transport does not, because its name is required), and platform trims only `designation` on create where the others trim every text field. The column headers used to be a third: transport's sat above the list and lined up with nothing. Since #253 they sit inside the Add form and share the inputs' grid, so they line up by construction and are drawn only for a writer; a read-only viewer sees the rows with no header strip.
+- **`fieldGrid` and `renderRowExtra` are optional, and platform is why.** Its form is two grids and two chip strips rather than a row of cells, so it passes no `fieldGrid` and gets no column-header strip; its row is two levels, so the carried-waveform tiles are `renderRowExtra`. Its filter bar is the pane's `facets` prop - one `ChipRow` per facet, any-of within a row and all-of across, whole values matched case-insensitively - which replaced a single `tagsOf` tag filter in 2026-09, when the platform library stopped filtering by carried waveform. Those two escape hatches have tests of their own in `ReferenceLibraryPane.test.tsx`, written before platform converted precisely so the conversion could not quietly change the prop shape.
+- **Two differences between the panes are deliberate and survive.** The em-dash fallback for a blank field is not uniform (waveform and service fall back on the name, transport does not, because its name is required), and platform trims only `designation` on create where the others trim every text field. The column headers used to be a third: transport's sat above the list and lined up with nothing. Since #253 they sit inside the Add form and share the inputs' grid, so they line up by construction and are drawn only for a writer; a read-only viewer sees the rows with no header strip. They are drawn over the edit form too: an edit box of five unlabelled inputs left a reader working out which was the owner and which the country from the values already in them.
+- **A save sends only the fields the edit changed.** The edit draft is a copy of the row as the page last fetched it, so sending all of it wrote that copy back over anything saved since, on fields the edit never touched - found when a description fix on a page loaded before an owner was filled in blanked the owner. `onSave` now receives a `Partial` diff (JSON equality, since a platform draft holds arrays), and a save that changed nothing closes without a request.
 
 `iconToolbarBtn` and `addDashedBtn` live in `components/shf-form/styles.ts` beside the field styles,
 since the editor and all four panes use them. `VocabField` - the select whose last entry types a new
@@ -458,8 +464,8 @@ bar included. Print / Save PDF opens `/catalog/comms-library/print` with the sam
 tab (`comms-library-print-page.tsx`), which renders `LibraryPane` with `readOnly` so the add form and
 the row pencils do not print, on portrait Letter at 0.4in margins with `print-color-adjust: exact`.
 The `@page` rule goes through a `<style>` appended to `document.head`, never through `sx`, for the
-reason AGENTS.md records; the route is a `PrintPageShell`, the shell the compatibility and nets
-print routes share. `LibraryPane` (`components/catalog/library-pane.tsx`) and the `?lib=` vocabulary
+reason AGENTS.md records; the route is a `PrintPageShell`, the shell the nets print route shares
+(the compatibility route is built like compare's instead, to paginate and fit). `LibraryPane` (`components/catalog/library-pane.tsx`) and the `?lib=` vocabulary
 (`LIBRARIES`, `isLibraryKey`, `libraryLabel`, `libraryQuery`, `components/catalog/library-keys.ts`) are
 shared by both routes, so a page module exports one component and fast refresh keeps working. The
 share image is the whole pane, title bar included, minus what a reader without write access never

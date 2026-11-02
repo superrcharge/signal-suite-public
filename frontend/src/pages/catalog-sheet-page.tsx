@@ -26,8 +26,14 @@ const MIN_SCALE = 0.45;
 export function CatalogSheetPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { canWrite } = useAuth();
+  const { canWrite, canWriteRadio } = useAuth();
   const { data: equipment, isLoading, isError } = useEquipmentItem(id ?? '');
+  // The editor's own rule, read off the record: an rto may edit radio records
+  // and nothing else, and the backend narrows the same way per record. Gating
+  // on canWrite alone hid Edit from an rto on the very sheets the editor, the
+  // rail and the help all say they can edit. While the record loads its type
+  // is unknown, so an rto's Edit waits for it rather than guessing.
+  const canEdit = canWrite || (canWriteRadio && equipment?.terminal_type === 'radio');
   const { data: allEquipment } = useEquipment();
 
   const [libraryTab, setLibraryTab] = useState<LibraryTab>('all');
@@ -197,15 +203,19 @@ export function CatalogSheetPage() {
         {/* RIGHT: Edit and Full Screen, then share and Print - the order every
             printable page uses (see DocumentActions). The export captures the
             same page box print does, so whatever the scale slider is set to
-            is what lands on the slide. */}
+            is what lands on the slide. An id that resolved to nothing has
+            nothing to edit, open or print, so those go rather than lead to a
+            second "not found". Gated on the error, not on `equipment`, so a
+            normal load does not have them pop in once the fetch lands. */}
         <DocumentActions
           onPrint={() => window.open(`/catalog/${id}/print?print=1&scale=${effectiveScale.toFixed(4)}`, '_blank')}
-          spec={catalogExportSpec(equipment?.nomenclature ?? '')}
+          printDisabled={isError}
+          spec={isError ? undefined : catalogExportSpec(equipment?.nomenclature ?? '')}
         >
-          {id && (
+          {id && !isError && (
             <>
-              {canWrite && (
-                <Tooltip title="Edit this terminal">
+              {canEdit && (
+                <Tooltip title="Edit this record">
                   <Button
                     startIcon={<EditIcon />}
                     size="small"

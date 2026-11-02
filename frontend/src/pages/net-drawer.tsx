@@ -7,7 +7,11 @@ import {
   Button,
   Divider,
   Drawer,
+  FormControl,
   IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   TextField,
   ToggleButton,
@@ -23,24 +27,57 @@ import {
   NET_FREQ_UNITS,
   NET_RADIO_TYPES,
   NET_RADIO_TYPE_LABELS,
+  NET_THEATERS,
+  NET_THEATER_LABELS,
   type Net,
   type NetFreqUnit,
   type NetRadioType,
+  type NetTheater,
+  type PaceTheater,
+  type Section,
 } from '@/types';
+
+import type { NetCreated } from '@/components/pace/net-landing';
+
+export type { NetCreated };
 
 interface NetDrawerProps {
   open: boolean;
-  /** Owning squadron for a newly created net. */
+  /**
+   * The squadron a new net starts in: the library on screen. It is a seed, not
+   * the answer. The drawer shows it in a Squadron select the user can change,
+   * because the API never moves a net between squadrons, so one filed under
+   * the wrong squadron can only be deleted and typed in again.
+   */
   section: string;
+  /**
+   * The squadrons a net can belong to: the card-bearing ones. Passed in rather
+   * than read through a hook, so the drawer keeps calling only the two mutation
+   * hooks its closed test mock lists.
+   */
+  squadrons: Section[];
+  /**
+   * The theater on screen, which a newly created net starts in. Optional so
+   * the drawer's own tests, which have no page around them, keep the default.
+   */
+  theater?: PaceTheater;
   /** null adds a new net; a net edits it. */
   net: Net | null;
   onClose: () => void;
+  /**
+   * Called instead of onClose after a create, with where the net went. The
+   * drawer shows the toast, naming the squadron; the host decides where to
+   * land, which is the one thing it knows and the drawer does not.
+   */
+  onCreated: (created: NetCreated) => void;
 }
 
 interface FormState {
+  section: string;
   name: string;
   netId: string;
   radioType: NetRadioType;
+  theater: NetTheater;
   txFreq: string;
   rxFreq: string;
   freqUnit: NetFreqUnit;
@@ -49,9 +86,11 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
+  section: '',
   name: '',
   netId: '',
   radioType: 'both',
+  theater: 'conus',
   txFreq: '',
   rxFreq: '',
   freqUnit: 'MHz',
@@ -68,13 +107,17 @@ const NET_ID_MAX = 50;
 const FREQ_MAX = 60;
 const NOTES_MAX = 250;
 
-function formFromNet(net: Net | null): FormState {
-  if (!net) return EMPTY_FORM;
+function formFromNet(net: Net | null, section: string, theater: PaceTheater): FormState {
+  if (!net) return { ...EMPTY_FORM, section, theater };
   return {
+    section: net.section,
     name: net.name,
     netId: net.net_id,
     radioType: (NET_RADIO_TYPES as readonly string[]).includes(net.radio_type)
       ? (net.radio_type as NetRadioType)
+      : 'both',
+    theater: (NET_THEATERS as readonly string[]).includes(net.theater)
+      ? (net.theater as NetTheater)
       : 'both',
     txFreq: net.tx_freq,
     rxFreq: net.rx_freq,
@@ -86,7 +129,15 @@ function formFromNet(net: Net | null): FormState {
   };
 }
 
-export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
+export function NetDrawer({
+  open,
+  section,
+  squadrons,
+  theater = 'conus',
+  net,
+  onClose,
+  onCreated,
+}: NetDrawerProps) {
   const isEdit = net !== null;
   const { showToast } = useToast();
   const createNet = useCreateNet();
@@ -107,9 +158,9 @@ export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
   latestNet.current = net;
   useEffect(() => {
     if (!open) return;
-    setForm(formFromNet(latestNet.current));
+    setForm(formFromNet(latestNet.current, section, theater));
     setError(null);
-  }, [open, netId]);
+  }, [open, netId, section, theater]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -122,12 +173,21 @@ export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
       setError('Name is required.');
       return;
     }
+    // Only reachable with an empty squadrons list, which the page never
+    // passes: it 404s before rendering the drawer unless the squadron on
+    // screen has a card. Said out loud rather than sent, because the server
+    // would answer "section not found" about a path the user never saw.
+    if (!isEdit && !form.section) {
+      setError('Squadron is required.');
+      return;
+    }
     setError(null);
 
     const payload = {
       name,
       net_id: form.netId.trim(),
       radio_type: form.radioType,
+      theater: form.theater,
       tx_freq: form.txFreq.trim(),
       rx_freq: form.rxFreq.trim(),
       freq_unit: form.freqUnit,
@@ -139,11 +199,17 @@ export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
       if (isEdit) {
         await updateNet.mutateAsync({ id: net.id, data: payload });
         showToast('Net updated');
+        onClose();
       } else {
-        await createNet.mutateAsync({ section, data: payload });
-        showToast('Net created');
+        // The squadron in the form, not the prop: the prop is where the user
+        // started, the form is where they said the net goes.
+        await createNet.mutateAsync({ section: form.section, data: payload });
+        // Named, for the same reason the select is shown: the squadron is the
+        // one fact about a net that cannot be corrected afterwards.
+        const label = squadrons.find((s) => s.key === form.section)?.label ?? form.section.toUpperCase();
+        showToast(`Net created in ${label}`);
+        onCreated({ section: form.section, radioType: form.radioType, theater: form.theater });
       }
-      onClose();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : 'Could not save net.');
     }
@@ -169,6 +235,35 @@ export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
         )}
 
         <Stack spacing={2}>
+          {/* First, because it is the one field that cannot be fixed later: a
+              net never moves between squadrons. Pre-selected to the library on
+              screen, so the common case is a glance, and changeable so a net
+              typed in from the wrong library still lands in the right one.
+              Edit mode hides it: the API does not take it, and the page title
+              already names the squadron. Same select as the terminal and kit
+              drawers' Section, minus their None and Create rows: a net always
+              has a squadron, and only one with a card can hold nets. */}
+          {!isEdit && (
+            <FormControl fullWidth size="small" required>
+              <InputLabel id="net-squadron-label">Squadron</InputLabel>
+              <Select
+                labelId="net-squadron-label"
+                label="Squadron"
+                value={form.section}
+                onChange={(e) => set('section', e.target.value)}
+                inputProps={{ 'aria-label': 'Squadron' }}
+              >
+                {squadrons.map((s) => (
+                  <MenuItem key={s.key} value={s.key}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: s.color, flexShrink: 0 }} />
+                      {s.label}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           <TextField
             label="Name"
             required
@@ -198,6 +293,7 @@ export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
               size="small"
               exclusive
               fullWidth
+              aria-label="Carried by"
               value={form.radioType}
               onChange={(_, next: NetRadioType | null) => {
                 if (next) set('radioType', next);
@@ -212,6 +308,31 @@ export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
             </ToggleButtonGroup>
           </Box>
 
+          {/* The same shape as Carried by: a net used in both theaters is
+              entered once. A new net starts in the theater the page is on. */}
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Theater
+            </Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              fullWidth
+              aria-label="Theater"
+              value={form.theater}
+              onChange={(_, next: NetTheater | null) => {
+                if (next) set('theater', next);
+              }}
+              sx={{ mt: 0.5 }}
+            >
+              {NET_THEATERS.map((th) => (
+                <ToggleButton key={th} value={th}>
+                  {NET_THEATER_LABELS[th]}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          </Box>
+
           <Box>
             <Typography variant="caption" color="text.secondary">
               Frequency unit
@@ -220,6 +341,7 @@ export function NetDrawer({ open, section, net, onClose }: NetDrawerProps) {
               size="small"
               exclusive
               fullWidth
+              aria-label="Frequency unit"
               value={form.freqUnit}
               onChange={(_, next: NetFreqUnit | null) => {
                 if (next) set('freqUnit', next);

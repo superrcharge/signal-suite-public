@@ -4,7 +4,7 @@ import { useMediaQuery, useTheme } from '@mui/material';
 import { useAuth } from '@/contexts/auth-context';
 import { useServices, useServiceUsage, useCreateService, useUpdateService, useDeleteService } from '@/services';
 import type { Service } from '@/types';
-import { LibInput, NameAndDesc, ReferenceLibraryPane, UsageCount, UsageNames } from './ReferenceLibraryPane';
+import { LibInput, MetaLine, NameAndDesc, OwnerCell, ReferenceLibraryPane, UsageCount, UsageNames } from './ReferenceLibraryPane';
 import { abbrevCell } from './reference-library-cells';
 
 // Mirrors the `max=` tags on the request DTOs. Capped as typed rather than
@@ -13,10 +13,12 @@ import { abbrevCell } from './reference-library-cells';
 const SERVICE_ABBREV_MAX = 50;
 const SERVICE_NAME_MAX = 100;
 const SERVICE_DESC_MAX = 250;
+const SERVICE_OWNED_BY_MAX = 120;
+const SERVICE_COUNTRY_MAX = 60;
 
-interface Draft { abbrev: string; name: string; description: string }
+interface Draft { abbrev: string; name: string; owned_by: string; owner_country: string; description: string }
 
-const EMPTY: Draft = { abbrev: '', name: '', description: '' };
+const EMPTY: Draft = { abbrev: '', name: '', owned_by: '', owner_country: '', description: '' };
 
 /**
  * Moved out of `catalog-editor-page.tsx` so the Comms Library route can mount
@@ -51,17 +53,19 @@ export function ServiceLibraryPane({ readOnly = false }: { readOnly?: boolean })
       singular="Service"
       items={services}
       isLoading={isLoading}
-      searchText={s => [s.abbrev, s.name, s.description].join(' ')}
+      searchText={s => [s.abbrev, s.name, s.owned_by, s.owner_country, s.description].join(' ')}
       itemLabel={s => s.abbrev}
       canWrite={!readOnly && canWrite}
       emptyDraft={EMPTY}
-      draftOf={s => ({ abbrev: s.abbrev, name: s.name, description: s.description })}
+      draftOf={s => ({ abbrev: s.abbrev, name: s.name, owned_by: s.owned_by, owner_country: s.owner_country, description: s.description })}
       isComplete={d => d.abbrev.trim().length > 0}
-      fieldGrid={{ template: '80px 1fr 2fr', headers: ['Abbrev', 'Name', 'Description'] }}
+      fieldGrid={{ template: '80px 1fr 1fr 110px 2fr', headers: ['Abbrev', 'Name', 'Owned by', 'Country', 'Description'] }}
       renderFields={(d, set, onEnter) => (
         <>
           <LibInput value={d.abbrev} onChange={v => { set({ ...d, abbrev: v }); }} onEnter={onEnter} placeholder="GX" maxLength={SERVICE_ABBREV_MAX} />
           <LibInput value={d.name} onChange={v => { set({ ...d, name: v }); }} onEnter={onEnter} placeholder="Inmarsat Global Express" maxLength={SERVICE_NAME_MAX} />
+          <LibInput value={d.owned_by} onChange={v => { set({ ...d, owned_by: v }); }} onEnter={onEnter} placeholder="Viasat" maxLength={SERVICE_OWNED_BY_MAX} />
+          <LibInput value={d.owner_country} onChange={v => { set({ ...d, owner_country: v }); }} onEnter={onEnter} placeholder="United States" maxLength={SERVICE_COUNTRY_MAX} />
           <LibInput value={d.description} onChange={v => { set({ ...d, description: v }); }} onEnter={onEnter} placeholder="Brief description" maxLength={SERVICE_DESC_MAX} />
         </>
       )}
@@ -69,12 +73,21 @@ export function ServiceLibraryPane({ readOnly = false }: { readOnly?: boolean })
         <>
           <div style={abbrevCell}>{s.abbrev}</div>
           <NameAndDesc name={s.name} description={s.description} showEmpty />
+          {wide && <OwnerCell owner={s.owned_by} country={s.owner_country} />}
           <UsageCount names={offeredBy(s)} noun="terminal" />
           {wide && <UsageNames names={offeredBy(s)} layout="column" />}
         </>
       )}
-      renderRowExtra={wide ? undefined : s => <UsageNames names={offeredBy(s)} layout="strip" />}
-      onCreate={d => createMutation.mutateAsync({ abbrev: d.abbrev.trim(), name: d.name.trim(), description: d.description.trim() })}
+      renderRowExtra={wide ? undefined : s => (
+        <>
+          <MetaLine parts={[s.owned_by, s.owner_country]} />
+          <UsageNames names={offeredBy(s)} layout="strip" />
+        </>
+      )}
+      onCreate={d => createMutation.mutateAsync({
+        abbrev: d.abbrev.trim(), name: d.name.trim(), owned_by: d.owned_by.trim(),
+        owner_country: d.owner_country.trim(), description: d.description.trim(),
+      })}
       onSave={(id, d) => updateMutation.mutateAsync({ id, data: d })}
       onDelete={s => deleteMutation.mutateAsync(s.id)}
       isCreating={createMutation.isPending}

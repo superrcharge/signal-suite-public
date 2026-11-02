@@ -28,6 +28,22 @@ export const inputSty: CSSProperties = {
 };
 
 /**
+ * The textarea look: `inputSty` plus the three rules that keep a multi-line
+ * box from ever growing a horizontal scrollbar. `pre-wrap` keeps the user's
+ * line breaks, `overflowWrap: anywhere` breaks a word longer than the box
+ * (a URL, a serial) instead of letting it run past the edge, and hiding
+ * horizontal overflow means nothing a browser does with a hanging trailing
+ * space can draw a bar. Grows downward only. Spread after `inputSty`.
+ */
+export const textareaSty: CSSProperties = {
+  ...inputSty,
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  overflowX: 'hidden',
+  resize: 'vertical',
+};
+
+/**
  * The select look: the platform arrow suppressed, an amber chevron drawn in its
  * place with two gradient triangles. Spread after `inputSty`. Shared so the
  * library panes' dropdowns match the editor's instead of falling back to the

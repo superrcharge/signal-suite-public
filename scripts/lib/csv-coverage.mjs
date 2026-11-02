@@ -120,7 +120,7 @@ function registeredPaths(root) {
 }
 
 // A registry path with no matching route is a button that 401s or 404s in the
-// user's face. That is not hypothetical: an earlier release shipped the Terminals template
+// user's face. That is not hypothetical: v1.5.0 shipped the Terminals template
 // pointing at /api/v1/terminals/import/template while terminal/routes.go only
 // registered the legacy /api/v1/import/template. Every test passed, because the
 // frontend tests assert which path is *sent* and the backend tests assert what

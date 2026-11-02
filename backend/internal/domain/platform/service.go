@@ -88,9 +88,8 @@ func diffPlatform(old, updated *Platform) map[string]any {
 
 	addStr("designation", old.Designation, updated.Designation)
 	addStr("popular_name", old.PopularName, updated.PopularName)
-	addStr("category", old.Category, updated.Category)
-	addStr("kind", old.Kind, updated.Kind)
-	addStr("operator", old.Operator, updated.Operator)
+	addList("category", old.Category, updated.Category)
+	addStr("type", old.Type, updated.Type)
 	addList("waveform_abbrevs", old.WaveformAbbrevs, updated.WaveformAbbrevs)
 	addList("equipment_ids", old.EquipmentIDs, updated.EquipmentIDs)
 	addStr("notes", old.Notes, updated.Notes)
@@ -103,9 +102,8 @@ func toResponse(p *Platform) dto.PlatformResponse {
 		ID:              p.ID,
 		Designation:     p.Designation,
 		PopularName:     p.PopularName,
-		Category:        p.Category,
-		Kind:            p.Kind,
-		Operator:        p.Operator,
+		Category:        nonNil(p.Category),
+		Type:            p.Type,
 		WaveformAbbrevs: nonNil(p.WaveformAbbrevs),
 		EquipmentIDs:    nonNil(p.EquipmentIDs),
 		Notes:           p.Notes,
@@ -116,20 +114,20 @@ func toResponse(p *Platform) dto.PlatformResponse {
 	}
 }
 
-func resolveCategory(v string) (string, error) {
-	c := NormaliseCategory(v)
-	if !IsValidVocab(c) {
-		return "", ErrPlatformInvalidCategory
+func resolveCategory(v []string) ([]string, error) {
+	c, unknown := NormaliseCategory(v)
+	if len(unknown) > 0 {
+		return nil, ErrPlatformInvalidCategory
 	}
 	return c, nil
 }
 
-func resolveKind(v string) (string, error) {
-	k := NormaliseKind(v)
-	if !IsValidVocab(k) {
-		return "", ErrPlatformInvalidKind
+func resolveType(v string) (string, error) {
+	t, ok := NormaliseType(v)
+	if !ok {
+		return "", ErrPlatformInvalidType
 	}
-	return k, nil
+	return t, nil
 }
 
 func (s *Service) ListPlatforms(ctx context.Context, resp *dto.ListPlatformsResponse) (int, error) {
@@ -152,7 +150,7 @@ func (s *Service) CreatePlatform(ctx context.Context, req *dto.CreatePlatformReq
 	if err != nil {
 		return http.StatusBadRequest, err
 	}
-	kind, err := resolveKind(req.Kind)
+	platformType, err := resolveType(req.Type)
 	if err != nil {
 		return http.StatusBadRequest, err
 	}
@@ -175,8 +173,7 @@ func (s *Service) CreatePlatform(ctx context.Context, req *dto.CreatePlatformReq
 		Designation:     designation,
 		PopularName:     strings.TrimSpace(req.PopularName),
 		Category:        category,
-		Kind:            kind,
-		Operator:        strings.TrimSpace(req.Operator),
+		Type:            platformType,
 		WaveformAbbrevs: abbrevs,
 		EquipmentIDs:    NormaliseIDs(req.EquipmentIDs),
 		Notes:           strings.TrimSpace(req.Notes),
@@ -254,15 +251,12 @@ func (s *Service) UpdatePlatform(ctx context.Context, req *dto.UpdatePlatformReq
 		}
 		p.Category = category
 	}
-	if req.Kind != nil {
-		kind, err := resolveKind(*req.Kind)
+	if req.Type != nil {
+		platformType, err := resolveType(*req.Type)
 		if err != nil {
 			return http.StatusBadRequest, err
 		}
-		p.Kind = kind
-	}
-	if req.Operator != nil {
-		p.Operator = strings.TrimSpace(*req.Operator)
+		p.Type = platformType
 	}
 	if req.WaveformAbbrevs != nil {
 		abbrevs := NormaliseAbbrevs(*req.WaveformAbbrevs)

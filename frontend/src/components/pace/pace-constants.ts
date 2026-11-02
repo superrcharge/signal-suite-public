@@ -59,6 +59,48 @@ export function toggleMark(
   return on ? [...rest, key] : rest;
 }
 
+// Catalog tokens, matching DataSheet.tsx: Oswald for display type, Barlow
+// Condensed for dense labels. Here rather than in SheetPreview.tsx because the
+// sheet header is its own component now and both draw with them.
+export const SHEET_DISPLAY_FONT = 'var(--font-display)';
+export const SHEET_CONDENSED_FONT = 'var(--font-condensed)';
+
+/**
+ * The style of a value marked as changed.
+ *
+ * Every marked element also carries `data-changed`, which is what a test or a
+ * later "changes only" view can select on without re-reading the payload.
+ */
+export const changedSty = { color: SHEET_CHANGED } as const;
+
+/** Props for any element that may print as changed. */
+export function changedProps(marked: boolean): { 'data-changed'?: 'true' } {
+  return marked ? { 'data-changed': 'true' } : {};
+}
+
+/**
+ * `2026-08-20` -> `20 AUG 2026`. Deliberately not `08/09/26`, which reads as
+ * two different dates depending on who is holding the card.
+ */
+export function formatCardDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const name = months[Number(m) - 1];
+  return name ? `${d} ${name} ${y}` : iso;
+}
+
+/** The subtext under the title: the date and the version label. */
+export const dateLineSty = {
+  fontFamily: SHEET_CONDENSED_FONT,
+  textAlign: 'center',
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: '0.18em',
+  textTransform: 'uppercase',
+  color: 'var(--fg-3)',
+} as const;
+
 export const PACE_TIERS: { key: string; label: string }[] = [
   { key: 'P', label: 'Primary' },
   { key: 'A', label: 'Alternate' },

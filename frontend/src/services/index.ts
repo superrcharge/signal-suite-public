@@ -45,6 +45,7 @@ export {
   useUpdateEquipment,
   useDeleteEquipment,
   useUploadEquipmentPhoto,
+  useDeleteEquipmentPhoto,
 } from './equipment-service';
 export type { ListEquipmentParams } from './equipment-service';
 export {
@@ -90,3 +91,30 @@ export {
   useUploadPaceEmblem,
   useDeletePaceEmblem,
 } from './pace-service';
+
+export {
+  useOrganizations,
+  useCreateOrganization,
+  useUpdateOrganization,
+  useDeleteOrganization,
+} from './organization-service';
+
+export {
+  useOperations,
+  useOperation,
+  useCreateOperation,
+  useUpdateOperation,
+  useDeleteOperation,
+  useSaveParticipant,
+  useDeleteParticipant,
+  useCreateParticipant,
+  useUpdateParticipantById,
+  useDeleteParticipantById,
+  useSaveOperationPhases,
+  useSaveOperationSites,
+  useSavePhasePlan,
+  useOperationRfis,
+  useCreateRfi,
+  useAddRfiComment,
+  useResolveRfi,
+} from './operation-service';

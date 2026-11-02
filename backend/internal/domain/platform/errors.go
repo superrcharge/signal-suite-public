@@ -28,16 +28,15 @@ var (
 		Message: "a platform with that designation already exists",
 		Status:  http.StatusConflict,
 	}
-	// Category and kind are open vocabularies, so these fire on shape rather
-	// than membership.
+	// Both closed, so both fire on membership.
 	ErrPlatformInvalidCategory = &Error{
 		Code:    "PLATFORM_INVALID_CATEGORY",
-		Message: "category must be 40 characters or fewer, using only letters, numbers, spaces and dashes",
+		Message: "category must be one or more of USA, USMC, USN, USAF, USSF, USCG, OGA",
 		Status:  http.StatusBadRequest,
 	}
-	ErrPlatformInvalidKind = &Error{
-		Code:    "PLATFORM_INVALID_KIND",
-		Message: "kind must be 40 characters or fewer, using only letters, numbers, spaces and dashes",
+	ErrPlatformInvalidType = &Error{
+		Code:    "PLATFORM_INVALID_TYPE",
+		Message: "type must be one of aircraft, uav, ship, ground vehicle, ground station",
 		Status:  http.StatusBadRequest,
 	}
 	ErrPlatformInternalError = &Error{

@@ -1,21 +1,25 @@
 package platform
 
 import (
-	"regexp"
+	"slices"
 	"strings"
 	"time"
+
+	"backend/internal/shared/branch"
 )
 
 // Platform is an external comms platform: an airframe, ship, vehicle or site
 // that is not a piece of equipment we hold. It has no SWAP, power or gain, which
 // is the whole reason it is not an equipment row - see migration 040.
 type Platform struct {
-	ID              string
-	Designation     string
-	PopularName     string
-	Category        string
-	Kind            string
-	Operator        string
+	ID          string
+	Designation string
+	PopularName string
+	// Category is the branch or branches that operate the platform, drawn from
+	// Branches and stored in that order. Empty means none has been set.
+	Category []string
+	// Type is one of Types. Stored lowercased.
+	Type            string
 	WaveformAbbrevs []string
 	EquipmentIDs    []string
 	Notes           string
@@ -25,57 +29,41 @@ type Platform struct {
 	UpdatedAt       time.Time
 }
 
-// DefaultCategories and DefaultKinds are starting vocabularies, not closed
-// sets, for the same reason transport kinds are open: a joint exercise brings
-// assets nobody anticipated, and filing a coalition UAS under "other" loses the
-// distinction the matrix column exists to show. The frontend offers these plus
-// every value already in use.
-var (
-	DefaultCategories = []string{"organic", "joint", "coalition"}
-	DefaultKinds      = []string{"aircraft", "ship", "ground vehicle", "ground station"}
-)
+// Branches is the closed category vocabulary, in order of precedence. The
+// literal, and the check-docs glossary entry that reads it, now live in
+// shared/branch so a second domain can use the list without importing this one.
+var Branches = branch.Valid
 
-const (
-	// The column defaults in migration 040. A blank value becomes these rather
-	// than an error, so a client that does not care still gets a usable row.
-	defaultCategory = "joint"
-	defaultKind     = "aircraft"
+// Types is the closed platform type vocabulary. It was an open "kind" until
+// migration 045: an open list let a free-text value in through import -
+// "launch platform", on one row - and every such value became a filter chip on
+// the library and the matrix. The same list is the CHECK in 045, widened by
+// 050: a UAV is an aircraft nobody talks to from inside it, so it is its own
+// type rather than an aircraft, and an operation's matrix can tell the two
+// apart.
+var Types = []string{"aircraft", "uav", "ship", "ground vehicle", "ground station"}
 
-	// Long enough for a descriptive term, short enough that a pasted paragraph
-	// is rejected rather than becoming a category.
-	MaxVocabLen = 40
-	// Letters, digits, spaces and dashes, and nothing that would render as
-	// markup on the printed matrix.
-	vocabPattern = `^[a-z0-9][a-z0-9 -]*$`
-)
-
-var vocabRe = regexp.MustCompile(vocabPattern)
-
-// normaliseVocab lowercases, trims and collapses internal whitespace, so
-// "Joint", "joint " and "JOINT" all store as one value. Underscores become
-// spaces so "ground_vehicle" and "ground vehicle" are one kind, not two.
-func normaliseVocab(v, fallback string) string {
-	s := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(v, "_", " ")))
-	if s == "" {
-		return fallback
-	}
-	return strings.Join(strings.Fields(s), " ")
+// NormaliseCategory maps each value to its branch, drops blanks and repeats,
+// and returns the branches in precedence order. The second result lists the
+// values that are not a branch, spelled as given, so a caller can say which.
+func NormaliseCategory(in []string) ([]string, []string) {
+	return branch.Normalise(in)
 }
 
-// NormaliseCategory normalises a category, blank becoming "joint".
-func NormaliseCategory(v string) string { return normaliseVocab(v, defaultCategory) }
+// The column default in migration 040. A blank type becomes this rather than
+// an error, so a client that does not care still gets a usable row.
+const defaultType = "aircraft"
 
-// NormaliseKind normalises a kind, blank becoming "aircraft".
-func NormaliseKind(v string) string { return normaliseVocab(v, defaultKind) }
-
-// IsValidVocab reports whether an already-normalised category or kind is
-// storable. A shape check, not a membership check, which is the point of an
-// open vocabulary.
-func IsValidVocab(v string) bool {
-	if v == "" || len(v) > MaxVocabLen {
-		return false
+// NormaliseType lowercases, trims, collapses internal whitespace and turns
+// underscores into spaces, so "Ship", "ship " and "ground_vehicle" land on a
+// listed type; blank becomes "aircraft". ok is false for anything that is not
+// one of Types after that.
+func NormaliseType(v string) (string, bool) {
+	s := strings.Join(strings.Fields(strings.ToLower(strings.ReplaceAll(v, "_", " "))), " ")
+	if s == "" {
+		return defaultType, true
 	}
-	return vocabRe.MatchString(v)
+	return s, slices.Contains(Types, s)
 }
 
 // NormaliseAbbrevs trims each abbrev, drops blanks, and drops a repeat that

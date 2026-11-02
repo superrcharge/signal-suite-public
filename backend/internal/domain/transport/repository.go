@@ -25,12 +25,12 @@ func NewRepository(db *pgxpool.Pool) Repository {
 	return &PostgresRepository{db: db}
 }
 
-const selectCols = `id, name, kind, provider, description, created_by, updated_by, created_at, updated_at`
+const selectCols = `id, name, kind, provider, description, owned_by, owner_country, created_by, updated_by, created_at, updated_at`
 
 func (r *PostgresRepository) scan(row pgx.Row) (*Transport, error) {
 	t := &Transport{}
 	err := row.Scan(
-		&t.ID, &t.Name, &t.Kind, &t.Provider, &t.Description,
+		&t.ID, &t.Name, &t.Kind, &t.Provider, &t.Description, &t.OwnedBy, &t.OwnerCountry,
 		&t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
@@ -92,9 +92,9 @@ func (r *PostgresRepository) NameExistsExcluding(ctx context.Context, name, excl
 
 func (r *PostgresRepository) Create(ctx context.Context, t *Transport) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO transports (id, name, kind, provider, description, created_by, updated_by, created_at, updated_at)
-		 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8)`,
-		t.Name, t.Kind, t.Provider, t.Description,
+		`INSERT INTO transports (id, name, kind, provider, description, owned_by, owner_country, created_by, updated_by, created_at, updated_at)
+		 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		t.Name, t.Kind, t.Provider, t.Description, t.OwnedBy, t.OwnerCountry,
 		t.CreatedBy, t.UpdatedBy, t.CreatedAt, t.UpdatedAt,
 	)
 	return err
@@ -102,9 +102,9 @@ func (r *PostgresRepository) Create(ctx context.Context, t *Transport) error {
 
 func (r *PostgresRepository) Update(ctx context.Context, t *Transport) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE transports SET name=$1, kind=$2, provider=$3, description=$4, updated_by=$5, updated_at=$6
-		 WHERE id=$7`,
-		t.Name, t.Kind, t.Provider, t.Description, t.UpdatedBy, t.UpdatedAt, t.ID,
+		`UPDATE transports SET name=$1, kind=$2, provider=$3, description=$4, owned_by=$5, owner_country=$6, updated_by=$7, updated_at=$8
+		 WHERE id=$9`,
+		t.Name, t.Kind, t.Provider, t.Description, t.OwnedBy, t.OwnerCountry, t.UpdatedBy, t.UpdatedAt, t.ID,
 	)
 	return err
 }

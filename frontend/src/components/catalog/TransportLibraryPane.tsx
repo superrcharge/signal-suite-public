@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
+import { useMediaQuery, useTheme } from '@mui/material';
 
 import { useAuth } from '@/contexts/auth-context';
 import { useTransports, useCreateTransport, useUpdateTransport, useDeleteTransport } from '@/services';
 import { VocabField } from '@/components/shf-form/VocabField';
 import { transportKindLabel, transportKindOptions } from '@/types';
 import type { Transport, TransportKind } from '@/types';
-import { Empty, LibInput, NameAndDesc, ReferenceLibraryPane } from './ReferenceLibraryPane';
+import { Empty, LibInput, MetaLine, NameAndDesc, OwnerCell, ReferenceLibraryPane } from './ReferenceLibraryPane';
 import { trailingCell } from './reference-library-cells';
 
-interface Draft { name: string; kind: TransportKind; provider: string; description: string }
+interface Draft { name: string; kind: TransportKind; provider: string; owned_by: string; owner_country: string; description: string }
 
 // Mirrors the `max=` tags on the request DTOs. Capped as typed rather than
 // caught at save: the server 400s on a longer value, and a limit the user only
@@ -17,13 +18,15 @@ interface Draft { name: string; kind: TransportKind; provider: string; descripti
 const TRANSPORT_NAME_MAX = 120;
 const TRANSPORT_PROVIDER_MAX = 120;
 const TRANSPORT_DESC_MAX = 500;
+const TRANSPORT_OWNED_BY_MAX = 120;
+const TRANSPORT_COUNTRY_MAX = 60;
 
-const EMPTY_DRAFT: Draft = { name: '', kind: '', provider: '', description: '' };
+const EMPTY_DRAFT: Draft = { name: '', kind: '', provider: '', owned_by: '', owner_country: '', description: '' };
 
 /**
  * The Transport Library, as a configuration of `ReferenceLibraryPane`.
  *
- * The odd one of the three: four fields rather than three, a vocabulary picker
+ * The odd one of the three: six fields rather than five, a vocabulary picker
  * in the middle, and a row whose cells are not in the same order as its form.
  */
 /** `readOnly` is for the print route: no add form, no row pencils, whatever the role. */
@@ -40,6 +43,11 @@ export function TransportLibraryPane({ readOnly = false }: { readOnly?: boolean 
   const createMutation = useCreateTransport();
   const updateMutation = useUpdateTransport();
   const deleteMutation = useDeleteTransport();
+  // Kind, provider and owner are 350px of trailing cells, which on a phone
+  // left the name zero wide and pushed the row buttons off screen. Below md
+  // they move to one line beneath the row, as the services usage does.
+  const theme = useTheme();
+  const wide = useMediaQuery(theme.breakpoints.up('md'));
 
   // useMemo, not a bare `?? []` - the fallback is a fresh array literal every
   // render, which would defeat the pane's filter memo entirely.
@@ -69,13 +77,16 @@ export function TransportLibraryPane({ readOnly = false }: { readOnly?: boolean 
       // value and both sides are lowercased, so the two agree today; a label
       // that is not a case variant - an abbreviation, a translation - would be
       // unsearchable by the text on screen.
-      searchText={t => [t.name, t.kind, t.provider, t.description].join(' ')}
+      searchText={t => [t.name, t.kind, t.provider, t.owned_by, t.owner_country, t.description].join(' ')}
       itemLabel={t => t.name}
       canWrite={!readOnly && canWritePace}
       emptyDraft={EMPTY_DRAFT}
-      draftOf={t => ({ name: t.name, kind: t.kind, provider: t.provider, description: t.description })}
+      draftOf={t => ({
+        name: t.name, kind: t.kind, provider: t.provider,
+        owned_by: t.owned_by, owner_country: t.owner_country, description: t.description,
+      })}
       isComplete={d => d.name.trim().length > 0}
-      fieldGrid={{ template: '1.4fr 100px 1fr 2fr', headers: ['Name', 'Kind', 'Provider', 'Description'] }}
+      fieldGrid={{ template: '1.4fr 100px 1fr 1fr 110px 2fr', headers: ['Name', 'Kind', 'Provider', 'Owned by', 'Country', 'Description'] }}
       renderFields={(d, set, onEnter) => (
         <>
           <LibInput value={d.name} onChange={v => { set({ ...d, name: v }); }} onEnter={onEnter} placeholder="Verizon LTE" maxLength={TRANSPORT_NAME_MAX} />
@@ -89,22 +100,35 @@ export function TransportLibraryPane({ readOnly = false }: { readOnly?: boolean 
             emptyLabel="Not set"
           />
           <LibInput value={d.provider} onChange={v => { set({ ...d, provider: v }); }} onEnter={onEnter} placeholder="Provider" maxLength={TRANSPORT_PROVIDER_MAX} />
+          <LibInput value={d.owned_by} onChange={v => { set({ ...d, owned_by: v }); }} onEnter={onEnter} placeholder="Owned by" maxLength={TRANSPORT_OWNED_BY_MAX} />
+          <LibInput value={d.owner_country} onChange={v => { set({ ...d, owner_country: v }); }} onEnter={onEnter} placeholder="Country" maxLength={TRANSPORT_COUNTRY_MAX} />
           <LibInput value={d.description} onChange={v => { set({ ...d, description: v }); }} onEnter={onEnter} placeholder="Brief description" maxLength={TRANSPORT_DESC_MAX} />
         </>
       )}
       // Not the same order as the form, and not a grid: name and description
-      // lead, with kind and provider to the right. The header strip above has
+      // lead, with kind, provider and owner to the right. The header strip above has
       // never lined up with these cells, and that predates the shared pane.
       renderRow={t => (
         <>
           <NameAndDesc name={t.name} description={t.description} />
-          <div style={trailingCell(90)}>{transportKindLabel(t.kind)}</div>
-          <div style={trailingCell(110)}>{t.provider || <Empty />}</div>
+          {wide && (
+            <>
+              <div style={trailingCell(90)}>{transportKindLabel(t.kind)}</div>
+              <div title={t.provider || undefined} style={trailingCell(110)}>{t.provider || <Empty />}</div>
+              <OwnerCell owner={t.owned_by} country={t.owner_country} />
+            </>
+          )}
         </>
+      )}
+      renderRowExtra={wide ? undefined : t => (
+        <MetaLine parts={[transportKindLabel(t.kind), t.provider, [t.owned_by, t.owner_country].filter(Boolean).join(', ')]} />
       )}
       // `kind` is not trimmed: it comes from the picker rather than a text box,
       // so there is nothing to trim and trimming would imply otherwise.
-      onCreate={d => createMutation.mutateAsync({ name: d.name.trim(), kind: d.kind, provider: d.provider.trim(), description: d.description.trim() })}
+      onCreate={d => createMutation.mutateAsync({
+        name: d.name.trim(), kind: d.kind, provider: d.provider.trim(),
+        owned_by: d.owned_by.trim(), owner_country: d.owner_country.trim(), description: d.description.trim(),
+      })}
       onSave={(id, d) => updateMutation.mutateAsync({ id, data: d })}
       onDelete={t => deleteMutation.mutateAsync(t.id)}
       isCreating={createMutation.isPending}

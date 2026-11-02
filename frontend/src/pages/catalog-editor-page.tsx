@@ -9,16 +9,17 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { MainLayout } from '@/components/layouts';
-import { PageBanner, RailTitle } from '@/components/common';
+import { PageBanner, PhotoCropModal, RailTitle } from '@/components/common';
 import { BANNER_BTN_AMBER_SX, BANNER_BTN_PAPER_SX, BANNER_BTN_PRIMARY_SX, BANNER_ICON_BTN_SX, CONTENT_LINE, RAIL_BANNER_H } from '@/components/common/banner-controls';
 import { CONTENT_GUTTER, HEADER_HEIGHT } from '@/components/layouts/main-layout';
-import { DataSheetView, PhotoCropModal, EquipmentPhoto, CATALOG_RAIL_W } from '@/components/catalog';
+import { DataSheetView, EquipmentPhoto, CATALOG_RAIL_W } from '@/components/catalog';
 import {
   SATCOM_BAND_OPTS, RADIO_BAND_OPTS, ORBIT_OPTS, OPMODE_OPTS,
 } from '@/components/catalog/catalog-vocab';
 import {
   useEquipment, useEquipmentItem,
   useCreateEquipment, useUpdateEquipment, useDeleteEquipment, useUploadEquipmentPhoto,
+  useDeleteEquipmentPhoto,
   useWaveforms, useServices,
 } from '@/services';
 import { useAuth } from '@/contexts/auth-context';
@@ -441,7 +442,7 @@ interface FormPaneProps {
    * already early-returns a refusal when this is false, so today it is always
    * true here; the write controls below gate on it anyway, because a gate
    * inherited from a parent is not a gate this component has - which is the
-   * defect the WaveformLibraryPane fix in an earlier release records.
+   * defect the WaveformLibraryPane fix in v1.10.0 records.
    */
   canEdit: boolean;
 }
@@ -462,6 +463,11 @@ export function EquipmentFormPane({ draft, isNew, globalWaveforms, globalService
   const bandOpts = isSatcom ? SATCOM_BAND_OPTS : RADIO_BAND_OPTS;
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadMutation = useUploadEquipmentPhoto();
+  const removePhotoMutation = useDeleteEquipmentPhoto();
+  const photoBusy = uploadMutation.isPending || removePhotoMutation.isPending;
+  // Whichever photo action ran last owns the error line; a fresh attempt at
+  // either clears the other's, so a stale message never sits under a success.
+  const photoError = uploadMutation.error ?? removePhotoMutation.error;
 
   // Radio inventory - used for Section 03b waveform compatibility chip grid
   const { data: equipmentData } = useEquipment();
@@ -479,8 +485,24 @@ export function EquipmentFormPane({ draft, isNew, globalWaveforms, globalService
 
   const handleCropConfirm = (file: File) => {
     setCropFile(null);
+    removePhotoMutation.reset();
     uploadMutation.mutate({ id: draft.id, file }, {
       onSuccess: (url) => onPatch({ photo_url: url }),
+    });
+  };
+
+  // The server deletes the blob, not just the reference, so there is no undo:
+  // getting the picture back means uploading it again.
+  const handleRemovePhoto = () => {
+    if (!window.confirm(`Remove the photo from "${draft.nomenclature || draft.id}"? The image is deleted, not hidden.`)) {
+      return;
+    }
+    uploadMutation.reset();
+    // Patched as well as invalidated: Save sends the draft's photo_url, so a
+    // draft still holding the old URL would write the deleted blob's address
+    // straight back onto the record.
+    removePhotoMutation.mutate({ id: draft.id }, {
+      onSuccess: () => onPatch({ photo_url: '' }),
     });
   };
 
@@ -597,12 +619,42 @@ export function EquipmentFormPane({ draft, isNew, globalWaveforms, globalService
             ) : (
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 {draft.photo_url ? (
-                  <EquipmentPhoto
-                    equipmentId={draft.id}
-                    photoUrl={draft.photo_url}
-                    alt="equipment"
-                    style={{ height: 80, width: 80, background: '#fff', padding: 4, objectFit: 'contain', flexShrink: 0 }}
-                  />
+                  // The frame holds the photo's size even while the image is
+                  // loading or fails to, so the remove mark always sits on the
+                  // same corner rather than floating over nothing.
+                  <div style={{ position: 'relative', height: 80, width: 80, flexShrink: 0 }}>
+                    <EquipmentPhoto
+                      equipmentId={draft.id}
+                      photoUrl={draft.photo_url}
+                      alt="equipment"
+                      style={{ height: 80, width: 80, background: '#fff', padding: 4, objectFit: 'contain', boxSizing: 'border-box' }}
+                    />
+                    {canEdit && (
+                      <Tooltip title="Remove photo" placement="top">
+                        <Box
+                          component="button"
+                          type="button"
+                          aria-label="Remove photo"
+                          onClick={handleRemovePhoto}
+                          disabled={photoBusy}
+                          sx={{
+                            position: 'absolute', top: -7, right: -7,
+                            width: 18, height: 18, p: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: 'var(--shf-graphite-900)', color: '#D43A2F',
+                            border: '1px solid var(--shf-graphite-600)', borderRadius: '50%',
+                            fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1,
+                            cursor: 'pointer', opacity: 0.7,
+                            transition: 'opacity 120ms, border-color 120ms',
+                            '&:hover, &:focus-visible': { opacity: 1, borderColor: '#D43A2F' },
+                            '&:disabled': { cursor: 'not-allowed', opacity: 0.35 },
+                          }}
+                        >
+                          ×
+                        </Box>
+                      </Tooltip>
+                    )}
+                  </div>
                 ) : (
                   <div style={{
                     height: 80, width: 80, flexShrink: 0,
@@ -613,31 +665,31 @@ export function EquipmentFormPane({ draft, isNew, globalWaveforms, globalService
                   }}>No Photo</div>
                 )}
                 {/* The photo above stays visible to anyone who reaches this
-                    pane - looking at it is a read. Only the upload control is
-                    gated, and it gates on the prop rather than on the parent
+                    pane - looking at it is a read. Only the upload control and
+                    the remove mark on the photo are gated, and it gates on the prop rather than on the parent
                     having already refused: this block is the last place in the
-                    app carrying the shape the earlier WaveformLibraryPane fix
+                    app carrying the shape the v1.10.0 WaveformLibraryPane fix
                     named, where a control is safe only because of where it
                     happens to be mounted. */}
                 {canEdit && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <button
                     onClick={() => photoInputRef.current?.click()}
-                    disabled={uploadMutation.isPending}
+                    disabled={photoBusy}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px',
                       background: 'var(--shf-amber)', color: 'var(--shf-black)',
                       border: 0, fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 11,
                       letterSpacing: '0.14em', textTransform: 'uppercase', borderRadius: 2,
-                      cursor: uploadMutation.isPending ? 'not-allowed' : 'pointer',
-                      opacity: uploadMutation.isPending ? 0.6 : 1,
+                      cursor: photoBusy ? 'not-allowed' : 'pointer',
+                      opacity: photoBusy ? 0.6 : 1,
                     }}
                   >
-                    {uploadMutation.isPending ? 'Uploading…' : draft.photo_url ? 'Replace Photo' : 'Upload Photo'}
+                    {uploadMutation.isPending ? 'Uploading…' : removePhotoMutation.isPending ? 'Removing…' : draft.photo_url ? 'Replace Photo' : 'Upload Photo'}
                   </button>
-                  {uploadMutation.isError && (
+                  {photoError && (
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#D43A2F', letterSpacing: '0.06em' }}>
-                      {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Upload failed'}
+                      {photoError instanceof Error ? photoError.message : 'Photo update failed'}
                     </div>
                   )}
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--shf-graphite-500)', letterSpacing: '0.06em' }}>

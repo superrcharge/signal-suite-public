@@ -12,7 +12,7 @@ import (
 
 // The full column list, written out by hand. This literal IS the pin.
 var wantColumns = []string{
-	"id", "section", "name", "net_id", "radio_type",
+	"id", "section", "name", "net_id", "radio_type", "theater",
 	"tx_freq", "rx_freq", "freq_unit", "roip", "description", "notes",
 	"created_by", "updated_by", "updated_at", "created_at",
 }
@@ -30,7 +30,7 @@ func csvSampleNet() *Net {
 	at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	return &Net{
 		ID: "550e8400-e29b-41d4-a716-446655440000", Section: "asqd",
-		Name: "EXAMPLE NET", NetID: "N01", RadioType: RadioTypeJEM,
+		Name: "EXAMPLE NET", NetID: "N01", RadioType: RadioTypeJEM, Theater: TheaterCONUS,
 		TxFreq: "30.5", RxFreq: "30.5", FreqUnit: FreqUnitMHz,
 		CreatedBy: "tester", UpdatedBy: "tester", CreatedAt: at, UpdatedAt: at,
 	}
@@ -54,6 +54,16 @@ func newImportService(section string, existing []*Net, sink *[]*Net) *Service {
 	return NewService(&MockRepository{
 		SectionExistsFunc: func(ctx context.Context, s string) (bool, error) { return s == section, nil },
 		FindBySectionFunc: func(ctx context.Context, s string) ([]*Net, error) { return existing, nil },
+		// The overlap rule the real repository applies, over the fixture list.
+		NameExistsFunc: func(ctx context.Context, s, theater, name string) (bool, error) {
+			for _, n := range existing {
+				if n.Section == s && strings.EqualFold(n.Name, name) &&
+					(n.Theater == theater || n.Theater == TheaterBoth || theater == TheaterBoth) {
+					return true, nil
+				}
+			}
+			return false, nil
+		},
 		CreateFunc: func(ctx context.Context, n *Net) error {
 			*sink = append(*sink, n)
 			return nil
@@ -84,7 +94,7 @@ func TestImport_SectionComesFromTheURLNotTheFile(t *testing.T) {
 // of the same name on different frequencies.
 func TestImport_DuplicateIsScopedToTheSquadron(t *testing.T) {
 	var created []*Net
-	svc := newImportService("asqd", []*Net{{Name: "SHARED", Section: "asqd"}}, &created)
+	svc := newImportService("asqd", []*Net{{Name: "SHARED", Section: "asqd", Theater: TheaterCONUS}}, &created)
 
 	_, parsed, err := svc.ImportNets(context.Background(), "asqd",
 		"name,radio_type\nshared,jem\nDISTINCT,both\n", "tester")

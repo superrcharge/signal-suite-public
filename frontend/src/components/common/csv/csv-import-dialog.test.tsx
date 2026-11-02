@@ -8,6 +8,7 @@ vi.mock('@/auth/api-client', () => ({ apiFetch: vi.fn() }));
 vi.mock('@/services', () => ({
   useSections: () => ({ data: [] }),
   useContractFiscalYears: () => ({ data: [] }),
+  useOperations: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
 // A viewer, who holds no write gate at all.

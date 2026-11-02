@@ -123,3 +123,30 @@ func TestSyncFromToken_ExistingUserKeepsRole(t *testing.T) {
 		t.Errorf("identity not refreshed from token: email=%q name=%q", saved.Email, saved.Name)
 	}
 }
+
+// A guest, B2B or CTR identity's v2 access token carries neither email nor
+// upn unless the app registration adds email as an optional claim, so the
+// middleware hands the sync an empty Email. The sync stores it as ” rather
+// than refusing the user or inventing an address: the row is keyed by
+// oidc_subject, and migration 053 lets ” repeat. This pins the service half
+// of that contract; the repository half is TestRepository_Upsert_EmptyEmailDoesNotCollide.
+func TestSyncFromToken_NoEmailClaimSyncsAsEmpty(t *testing.T) {
+	repo := &MockRepository{
+		FindByOIDCSubjectFunc: func(context.Context, string) (*User, error) {
+			return nil, ErrUserNotFound
+		},
+		CountFunc: func(context.Context) (int, error) { return 1, nil },
+	}
+
+	saved := runSync(t, repo, &auth.User{ID: "oid-guest", Email: "", Name: "Guest User"})
+
+	if saved.Email != "" {
+		t.Errorf("email = %q, want the empty string the token gave", saved.Email)
+	}
+	if saved.OIDCSubject == nil || *saved.OIDCSubject != "oid-guest" {
+		t.Errorf("oidc_subject not set from the token: %v", saved.OIDCSubject)
+	}
+	if len(saved.Roles) != 1 || saved.Roles[0] != RoleViewer {
+		t.Errorf("roles = %v, want [%s]", saved.Roles, RoleViewer)
+	}
+}

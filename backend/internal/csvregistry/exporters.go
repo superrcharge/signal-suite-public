@@ -7,6 +7,7 @@ import (
 	"backend/internal/domain/contract"
 	"backend/internal/domain/equipment"
 	"backend/internal/domain/kit"
+	"backend/internal/domain/organization"
 	"backend/internal/domain/pace"
 	"backend/internal/domain/platform"
 	"backend/internal/domain/radionet"
@@ -32,6 +33,8 @@ type Services struct {
 	Net       *radionet.Service
 	Pace      *pace.Service
 	Platform  *platform.Service
+
+	Organization *organization.Service
 }
 
 // Exporters wires every domain to the bundle endpoint.
@@ -87,6 +90,16 @@ func Exporters(s Services) []csvbulk.Dataset {
 			// The template is shared across squadrons, so it takes no section.
 			Template: func(ctx context.Context, sel csvbulk.Selector) (string, error) {
 				return s.Net.GetImportTemplate(ctx, sel.Columns)
+			},
+		},
+		{
+			Resource:   "organizations",
+			FilePrefix: "signal-suite-organizations",
+			Export: func(ctx context.Context, sel csvbulk.Selector) (string, error) {
+				return s.Organization.ExportOrganizations(ctx, sel.Columns)
+			},
+			Template: func(ctx context.Context, sel csvbulk.Selector) (string, error) {
+				return s.Organization.GetImportTemplate(ctx, sel.Columns)
 			},
 		},
 		{

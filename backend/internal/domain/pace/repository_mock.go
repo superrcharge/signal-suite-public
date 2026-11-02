@@ -6,7 +6,7 @@ import "context"
 // packages can use it.
 type MockRepository struct {
 	SectionExistsFunc func(ctx context.Context, section string) (bool, error)
-	FindCardFunc      func(ctx context.Context, section string) (*CommsCard, error)
+	FindCardFunc      func(ctx context.Context, section, theater string) (*CommsCard, error)
 	SaveCardFunc      func(ctx context.Context, card *CommsCard) error
 	SetEmblemURLFunc  func(ctx context.Context, section, url string) error
 
@@ -26,11 +26,11 @@ func (m *MockRepository) SectionExists(ctx context.Context, section string) (boo
 	return true, nil
 }
 
-func (m *MockRepository) FindCard(ctx context.Context, section string) (*CommsCard, error) {
+func (m *MockRepository) FindCard(ctx context.Context, section, theater string) (*CommsCard, error) {
 	if m.FindCardFunc != nil {
-		return m.FindCardFunc(ctx, section)
+		return m.FindCardFunc(ctx, section, theater)
 	}
-	return &CommsCard{Section: section, Plans: []*ChannelPlan{}}, nil
+	return &CommsCard{Section: section, Theater: theater, Plans: []*ChannelPlan{}}, nil
 }
 
 func (m *MockRepository) SaveCard(ctx context.Context, card *CommsCard) error {

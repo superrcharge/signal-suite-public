@@ -186,11 +186,11 @@ func TestDistinctClientsBehindProxyGetDistinctBuckets(t *testing.T) {
 
 func TestStripPort(t *testing.T) {
 	cases := map[string]string{
-		"198.51.100.7:54321":  "198.51.100.7",
-		"198.51.100.7":        "198.51.100.7",
-		"[2001:db8::1]:443": "2001:db8::1",
-		"2001:db8::1":       "2001:db8::1",
-		"":                  "",
+		"198.51.100.7:54321": "198.51.100.7",
+		"198.51.100.7":       "198.51.100.7",
+		"[2001:db8::1]:443":  "2001:db8::1",
+		"2001:db8::1":        "2001:db8::1",
+		"":                   "",
 	}
 	for in, want := range cases {
 		if got := stripPort(in); got != want {

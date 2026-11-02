@@ -2,7 +2,7 @@
 // The single verification command. One invocation, one exit code.
 //
 // Everything in the AGENTS.md "Verification before pushing" section runs here,
-// plus the four traps listed beneath it. It exists so an executor cannot
+// plus the five traps listed beneath it. It exists so an executor cannot
 // paraphrase a list of five commands into four, and cannot substitute a
 // cheaper check for a real one - the failure mode AGENTS.md calls out by name
 // ("never substitute go build as a lint proxy").
@@ -35,7 +35,7 @@
 //
 // --reuse-receipt is for the pre-push hook and nothing else. It runs the two
 // steps that compile nothing and then, if the receipt on disk still describes
-// this exact tree, exits 0 without repeating the other thirteen.
+// this exact tree, exits 0 without repeating the other fifteen.
 //
 // It exists because the hook called this script unconditionally while the Stop
 // gate had already forced a full passing run moments earlier, on a tree that
@@ -420,7 +420,7 @@ function checkServiceMocks() {
 // reason, because "we meant to" and "nobody noticed" look identical in a diff
 // eighteen months later, which is the whole failure this step exists to stop.
 // Empty on purpose. Fiber lived here while it sat on v3.3.0, and was taken to
-// v3.5.0 on its own PR once backend/internal/middleware/authz_test.go
+// v3.5.0 on its own PR (#153) once backend/internal/middleware/authz_test.go
 // had grown the route-gating coverage the hold was waiting for - the eight
 // tests from TestRequireRole through TestExportRoutesAreAuthOnly, which pin
 // every route's auth requirement rather than trusting the framework's group
@@ -431,10 +431,21 @@ function checkServiceMocks() {
 // behind". Leaving a caught-up module here would make the next fiber release
 // invisible to this check, which is the opposite of what the entry was for.
 //
-// The careful-review intent still holds and lives where it belongs: the
-// fiber is bumped on its own, never in a grouped patch bump, so it always
-// arrives as its own reviewable change.
-const GO_MODULE_HOLDS = {}
+// The careful-review intent still holds: fiber should arrive as its own
+// reviewable bump rather than inside a grouped patch update.
+//
+// azblob is held at v1.8.0 because of a restricted-cloud storage endpoint. Every azblob release pins the
+// storage REST API version it sends (x-ms-version) as a constant: v1.8.0 sends
+// 2026-06-06, v1.8.1 sends 2026-12-06. The commercial endpoint accepted the newer version, but
+// the air-gapped endpoint rejected every photo and emblem request once v1.8.1
+// reached it, while v1.8.0 had worked. A patch bump of this module is
+// therefore a storage API change there, and it must not ride in on an
+// automated bump. Lift the hold only once the air-gapped endpoint is
+// confirmed to accept the newer x-ms-version.
+const GO_MODULE_HOLDS = {
+  'github.com/Azure/azure-sdk-for-go/sdk/storage/azblob':
+    'v1.8.1+ sends x-ms-version 2026-12-06, which the air-gapped storage endpoint rejects; v1.8.0 (2026-06-06) is the last version proven there',
+}
 
 // Runs first, and deliberately so. Every other step here compiles or executes
 // something; this one only reads pins and compares them, so it is the cheapest
@@ -489,8 +500,8 @@ function checkUiTokens() {
 // every pull request. A Go module with a known vulnerability therefore cannot
 // merge, whatever this file says. What this step uniquely saw was the other
 // case - a module merely behind latest with nothing wrong with it - which is a
-// maintenance signal, not a correctness fact, and bumping it is a routine
-// change rather than a blocker.
+// maintenance signal, not a correctness fact, and automated dependency PRs
+// cover it.
 //
 // So: drift is printed, loudly, every run. It just does not stop the work.
 // A genuinely unsafe version is somebody else's job, and that somebody has a
@@ -522,8 +533,8 @@ function checkGoModules() {
       `${behind.length} Go module${behind.length === 1 ? '' : 's'} behind latest:`,
       ...behind.map((m) => `  ${m.path}  ${m.cur} -> ${m.next}`),
       '',
-      'Bump them when convenient; nothing here is a correctness failure.',
-      'bumps once CI is green, so this needs no action from you. To take them',
+      'This is a maintenance signal, not a gate; a dependency bot can take them',
+      'once CI is green, so this needs no action from you. To take them',
       'now anyway:',
       `  cd backend && GOTOOLCHAIN=auto go get ${behind.map((m) => `${m.path}@${m.next}`).join(' ')}`,
       '  cd backend && GOTOOLCHAIN=auto go mod tidy',
@@ -607,7 +618,7 @@ function checkCsvCoverage() {
  *
  * A cyclic chunk graph builds cleanly, type-checks, lints, passes every test and
  * serves a 200 with valid HTML, and then renders a blank white screen. That
- * shipped in an earlier release. This is the only step here that inspects build OUTPUT
+ * shipped in v1.8.2. This is the only step here that inspects build OUTPUT
  * rather than source, which is exactly why nothing else could see it.
  */
 function checkBundleGraph() {

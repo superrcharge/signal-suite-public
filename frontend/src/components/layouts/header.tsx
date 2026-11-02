@@ -18,35 +18,35 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ApiIcon from '@mui/icons-material/Api';
 import LogoutIcon from '@mui/icons-material/Logout';
 import DashboardIcon from '@mui/icons-material/Dashboard';
-// Ground-station dish glyph - rendered as the literal U+1F4E1 emoji so
-// it matches what the user explicitly referenced and avoids the MUI
-// icon set's satellite icons (which read as either "framed image" or
-// space satellite). Wrapped in a span sized to match the surrounding
-// fontSize="small" MUI icons (~18px).
-const SatelliteDishIcon = () => (
-  <span aria-hidden style={{ fontSize: 13, lineHeight: 1, width: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-    📡
-  </span>
-);
 // Router over the generic Widgets squares - kits are network gear, and
 // this is the closest stock match to a router appliance (chassis body
 // with status lights and antennas).
 import RouterIcon from '@mui/icons-material/Router';
-import PeopleIcon from '@mui/icons-material/People';
-import HistoryIcon from '@mui/icons-material/History';
-import SettingsIcon from '@mui/icons-material/Settings';
-import DescriptionIcon from '@mui/icons-material/Description';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
-import SettingsInputAntennaIcon from '@mui/icons-material/SettingsInputAntenna';
+import { PaceIcon } from '@/components/common/pace-icon';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
-import { useState, MouseEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router';
+// The Comms Library rows of the `+` menu. Each is a glyph for what the
+// library holds rather than for "library": a waveform trace, a SATCOM ground
+// segment, a wired path, an airframe. help-dialog.tsx draws the same set.
+// There is no Add Organization row: organizations are visible only inside
+// Operations and are added from the Join Operation wizard's Add to library.
+import GraphicEqIcon from '@mui/icons-material/GraphicEq';
+import CellTowerIcon from '@mui/icons-material/CellTower';
+import CableIcon from '@mui/icons-material/Cable';
+import FlightIcon from '@mui/icons-material/Flight';
+import { useState, MouseEvent, type ReactNode } from 'react';
+import { useNavigate, useLocation, Link as RouterLink } from 'react-router';
 import { useAuth } from '@/contexts';
 import { useLogout } from '@/services';
 import { usePaceSections } from '@/components/pace/use-pace-sections';
+import { parseTheater } from '@/components/pace/theater';
+import { netsLibraryPath, type NetCreated } from '@/components/pace/net-landing';
+import { NetDrawer } from '@/pages/net-drawer';
+import { LIBRARIES, libraryQuery, type LibraryKey } from '@/components/catalog/library-keys';
 import { CsvHeaderControls } from '@/components/common/csv/csv-header-controls';
 import { HelpButton } from '@/components/help/help-button';
+import { CrosshairIcon } from '@/components/common/crosshair-icon';
+import { SatelliteDishIcon, visibleNavItems } from './nav-items';
 import { RoleBadge, SignalSuiteMark } from '@/components/common';
 import { CONTENT_LINE } from '@/components/common/banner-controls';
 import { SCROLLBAR_W } from '@/theme/global-styles';
@@ -81,54 +81,53 @@ const HeaderRule = () => (
   />
 );
 
-interface NavItem {
+/**
+ * The bar's left inset, in px. Named because two things derive from it: the
+ * Toolbar's left padding and the width of the left cluster, which ends at
+ * `sidebarWidth` so that its closing rule sits on the sidebar's border.
+ */
+const HEADER_INSET = 20;
+
+/**
+ * A row of the `+` menu.
+ *
+ * `gate` names the flag that must hold for the row to render, in the same
+ * vocabulary `CsvWriteGate` uses in csv-domains.ts, and it is the flag the
+ * DESTINATION already gates on: a row here is an advertisement for a control
+ * that exists on the page it lands on, so it must show for exactly the roles
+ * that find the control there. The pane table in authz.md is the authority.
+ *
+ * `group` decides where a divider goes: one wherever the visible rows change
+ * group. The first three rows open an add drawer; the library rows land on
+ * the Comms Library, whose add form is inline at the top of the pane; the
+ * operation row is its own group at the bottom.
+ *
+ * A row either navigates (`href`) or acts in place (`onSelect`). Add Net is
+ * the in-place one: its drawer is mounted here, because a net belongs to a
+ * squadron and no page but a squadron's own can host the question.
+ */
+type AddGate = 'canWrite' | 'canWriteRadio' | 'canWritePace';
+
+interface AddItem {
   label: string;
-  path: string;
-  icon: React.ReactNode;
-  disabled?: boolean;
-  /**
-   * An auth flag the viewer must hold for the item to appear, named the way
-   * help-content.ts names its `gate`. A flag name rather than a predicate, so
-   * the list stays readable and every gate is one of the booleans off
-   * useAuth() rather than per-item logic. This hides a nav item; it does not
-   * deny anything - the route answers by URL and the server is the authority.
-   *
-   * The rule for `isAdmin`: a page whose READ the server refuses for a role
-   * is not offered to that role. Users and Audit Log are the two such pages
-   * (`GET /api/v1/users` and `GET /api/v1/audit` are admin-only), so a viewer
-   * is not handed a menu entry whose only destination is a refusal screen.
-   */
-  gate?: 'isAdmin' | 'canSeeContracts';
-  /**
-   * Hidden from the planner role, which sees a planning-shaped app.
-   *
-   * Kept separate from `gate` because the two point opposite ways: `gate`
-   * REQUIRES a flag, this SUBTRACTS for one role, and a wider role held
-   * alongside planner must keep the item - see AuthContextValue.isPlanner.
-   */
-  hideFromPlanner?: boolean;
-  /**
-   * Extra route prefixes this item owns for the purpose of naming the page.
-   *
-   * The Nets Library lives under PACE Planning in the sidebar but sits at its
-   * own /nets route, so without this the page menu matched nothing there and
-   * fell back to the literal product name, which is not a page and not
-   * anywhere the menu can go.
-   */
-  alsoMatches?: string[];
+  icon: ReactNode;
+  gate: AddGate;
+  href?: string;
+  onSelect?: () => void;
+  group: 'record' | 'library' | 'operation';
 }
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard',  path: '/dashboard', icon: <DashboardIcon fontSize="small" />, hideFromPlanner: true },
-  { label: 'Terminals',  path: '/terminals', icon: <SatelliteDishIcon />, hideFromPlanner: true },
-  { label: 'Kits',       path: '/kits',      icon: <RouterIcon fontSize="small" />, hideFromPlanner: true },
-  { label: 'Catalog',   path: '/catalog',   icon: <MenuBookIcon fontSize="small" /> },
-  { label: 'PACE',      path: '/pace',      icon: <SettingsInputAntennaIcon fontSize="small" />, alsoMatches: ['/nets'] },
-  { label: 'Contracts', path: '/contracts', icon: <DescriptionIcon fontSize="small" />, gate: 'canSeeContracts' },
-  { label: 'Users',      path: '/users',     icon: <PeopleIcon fontSize="small" />, gate: 'isAdmin' },
-  { label: 'Settings',   path: '/settings',  icon: <SettingsIcon fontSize="small" /> },
-  { label: 'Audit Log',  path: '/audit',     icon: <HistoryIcon fontSize="small" />, gate: 'isAdmin' },
-];
+/**
+ * The Comms Library rows, keyed so a fifth library cannot be added to the chip
+ * row without this compiling red. Order comes from `LIBRARIES`, not from here,
+ * so the menu reads in the order the chips do.
+ */
+const LIBRARY_ADD: Record<LibraryKey, { singular: string; icon: ReactNode; gate: AddGate }> = {
+  waveforms:  { singular: 'Waveform',  icon: <GraphicEqIcon fontSize="small" />, gate: 'canWriteRadio' },
+  services:   { singular: 'Service',   icon: <CellTowerIcon fontSize="small" />, gate: 'canWrite' },
+  transports: { singular: 'Transport', icon: <CableIcon fontSize="small" />,     gate: 'canWritePace' },
+  platforms:  { singular: 'Platform',  icon: <FlightIcon fontSize="small" />,    gate: 'canWritePace' },
+};
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -136,34 +135,75 @@ interface HeaderProps {
   sidebarWidth: number;
 }
 
-export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }: HeaderProps) {
+export function Header({ onMenuClick, sidebarOpen, sidebarWidth }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  // Add Net sits beside Add Kit and Add Terminal on every route, so the three
-  // read as one cluster rather than one that comes and goes with the page.
+  // Add Net sits beside Add Kit and Add Terminal on every route, so the rows
+  // read as one menu rather than one that comes and goes with the page.
   //
   // Nets are a per-squadron library, so the button still has to answer "whose".
-  // /nets/:section and /pace/:section name one, and the drawer opens straight
-  // onto it. Everywhere else there is no squadron in the URL, so it lands on the
-  // nets picker instead of guessing one -- a net filed under the wrong squadron
-  // is worse than one extra click, and squadrons are not interchangeable.
+  // It answers it inside the drawer: a Squadron select, first field, which the
+  // user sees and can change before Create. The drawer opens right here, over
+  // whatever page is on screen, the way Add Terminal and Add Kit open theirs -
+  // it used to navigate to the squadron's nets page first, or to the picker
+  // from any route that named none, and both read as being sent somewhere
+  // else before being allowed to add.
   //
-  // The match stays anchored to the end of the path, which now decides the
-  // DESTINATION rather than whether the button exists. /pace/:section/edit is
-  // still deliberately excluded: the PACE editor holds one draft for the whole
-  // card and an SPA navigation away from it discards every unsaved change with
-  // no beforeunload to catch it. From there the button goes to the picker like
-  // any other non-section route, so the click costs a squadron choice instead of
-  // a draft.
+  // The URL only seeds the select. /nets/:section and /pace/:section/... name
+  // a squadron, so the common case is a glance; anywhere else it starts empty
+  // and the drawer refuses to create until one is chosen - a net filed under
+  // the wrong squadron cannot be moved, only deleted and typed in again. The
+  // match is a prefix, so the editor and print routes seed too: nothing
+  // navigates on open, so the editor's draft is not at risk from the click.
   //
-  // hasPaceCard is checked too, since a section without a card has no nets page
-  // to land on either.
-  const paceSectionMatch = /^\/(?:nets|pace)\/([^/]+)\/?$/.exec(location.pathname);
+  // hasPaceCard is checked, since only a section with a card holds nets.
+  const paceSectionMatch = /^\/(?:nets|pace)\/([^/]+)/.exec(location.pathname);
   const matchedSection = paceSectionMatch?.[1];
-  const { hasCard } = usePaceSections();
-  const netSection = matchedSection && hasCard(matchedSection) ? matchedSection : null;
-  const addNetHref = netSection ? `/nets/${netSection}?drawer=add` : '/nets';
-  const { user, isAuthenticated, role, canWrite, canWritePace, isAdmin, isPlanner, canSeeContracts } = useAuth();
+  const { sections: squadrons, hasCard } = usePaceSections();
+  const netSection = matchedSection && hasCard(matchedSection) ? matchedSection : '';
+  // The theater rides along, so Add Net from an OCONUS list opens the drawer
+  // in OCONUS. A pure parse of location.search: no service hook, which the
+  // header's closed test mocks would otherwise all have to stub.
+  const theater = parseTheater(new URLSearchParams(location.search).get('theater'));
+  // Mounted on the click and unmounted on close, never held open with a prop:
+  // the drawer calls the two net mutation hooks, and mounting it on every
+  // route would put them in every closed `@/services` mock that renders
+  // MainLayout. Same rule as the CSV dialogs.
+  const [addNetOpen, setAddNetOpen] = useState(false);
+  // After Create, land on the new net: that squadron's library, on the tab
+  // and theater it is visible under (net-landing.ts). The one route that
+  // stays put is the PACE editor, which holds an unsaved draft for the whole
+  // card that an SPA navigation would discard; there the toast names the
+  // squadron and the editor keeps the screen.
+  const onPaceEditor = /^\/pace\/[^/]+\/edit\/?$/.test(location.pathname);
+  const handleNetCreated = (created: NetCreated) => {
+    setAddNetOpen(false);
+    if (onPaceEditor) return;
+    void navigate(netsLibraryPath(created, new URLSearchParams(location.search)));
+  };
+  const { user, isAuthenticated, role, canWrite, canWriteRadio, canWritePace, isAdmin, isPlanner, canSeeContracts, canSeeTrackers } = useAuth();
+  // The `+` menu, in the order the app introduces each thing top to bottom
+  // and left to right: the Terminals and Kits sidebar groups, the Nets Library
+  // under PACE Planning, then the Comms Library chips in chip order, and
+  // Add Operation last. Every row is gated on the flag its destination gates
+  // on - see AddItem.
+  const addItems: AddItem[] = [
+    { label: 'Add Terminal', icon: <SatelliteDishIcon />, gate: 'canWrite', href: '/terminals?drawer=add', group: 'record' },
+    { label: 'Add Kit', icon: <RouterIcon fontSize="small" />, gate: 'canWrite', href: '/kits?drawer=add', group: 'record' },
+    { label: 'Add Net', icon: <PaceIcon fontSize="small" />, gate: 'canWritePace', onSelect: () => setAddNetOpen(true), group: 'record' },
+    ...LIBRARIES.map((lib): AddItem => ({
+      label: `Add ${LIBRARY_ADD[lib.key].singular}`,
+      icon: LIBRARY_ADD[lib.key].icon,
+      gate: LIBRARY_ADD[lib.key].gate,
+      href: `/catalog/comms-library${libraryQuery(lib.key)}`,
+      group: 'library',
+    })),
+    // Last, below every library row: it will be the least frequently clicked
+    // item, and Operations sits at the bottom of the sidebar too.
+    { label: 'Add Operation', icon: <CrosshairIcon fontSize="small" />, gate: 'canWritePace', href: '/operations?drawer=add', group: 'operation' },
+  ];
+  const addGates = { canWrite, canWriteRadio, canWritePace } as const;
+  const visibleAddItems = addItems.filter((item) => addGates[item.gate]);
   // A user has exactly one role: user/service.go replaces the array outright
   // (`target.Roles = []string{req.Role}`), so this renders one badge and the
   // menu one description, with no plural heading.
@@ -176,13 +216,8 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
   // pill rather than shouting it in uppercase.
   const shownRoles = (user?.roles ?? []).filter((r): r is Role => ROLES.includes(r as Role));
   const logoutMutation = useLogout();
-  // Drop the items whose gate the viewer does not hold, then the ones a
-  // planner is spared. Gated routes are additionally guarded server-side.
-  const gates = { isAdmin, canSeeContracts } as const;
-  const visibleNavItems = navItems.filter(
-    (n) => (!n.gate || gates[n.gate]) && !(n.hideFromPlanner && isPlanner),
-  );
-  const currentPage = visibleNavItems.find((n) =>
+  const navItems = visibleNavItems({ isAdmin, canSeeContracts, canSeeTrackers, isPlanner });
+  const currentPage = navItems.find((n) =>
     [n.path, ...(n.alsoMatches ?? [])].some((p) => location.pathname.startsWith(p)),
   );
   const [pageMenuAnchor, setPageMenuAnchor] = useState<null | HTMLElement>(null);
@@ -203,9 +238,10 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
   };
 
   const handleAddMenuClose = () => setAddMenuAnchor(null);
-  const handleAdd = (path: string) => {
+  const handleAdd = (item: AddItem) => {
     handleAddMenuClose();
-    void navigate(path);
+    if (item.onSelect) item.onSelect();
+    else if (item.href) void navigate(item.href);
   };
 
   const handleAccountOpen = (e: MouseEvent<HTMLElement>) => setAccountAnchor(e.currentTarget);
@@ -220,63 +256,88 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
 
   return (
     <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-      {/* Own gutters: 20px inset on the left, 14px between the left cluster's
-          items; the right cluster sets its own, tighter gap below. On the
-          right, the content line plus the scrollbar of #main-content, so the
-          lockup's last bar ends where the catalog cards and the browse search
-          field end. */}
-      <Toolbar disableGutters sx={{ gap: '14px', pl: 2.5, pr: `${String(CONTENT_LINE + SCROLLBAR_W)}px` }}>
-        {/* Sidebar toggle. ml: -1 rather than edge="start" (-12px): with the
-            button's own 8px padding that puts the glyph, not the box, at the
-            20px inset. */}
-        <IconButton
-          color="inherit"
-          aria-label={sidebarOpen ? 'close sidebar' : 'open sidebar'}
-          onClick={onMenuClick}
-          sx={{ ml: -1 }}
-        >
-          {/* Every size in this bar steps up about 1.17x from md, together with
-              the outlined set in header-trigger-sx.ts - see HEADER_CONTROL_H for
-              why it is all of them at once and why phones keep the smaller set. */}
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {!sidebarOpen
-              ? <ChevronRightIcon sx={{ fontSize: { xs: 18, md: 21 }, opacity: 0.6, mr: -0.5 }} />
-              : <ChevronLeftIcon sx={{ fontSize: { xs: 18, md: 21 }, opacity: 0.6, mr: -0.5 }} />
-            }
-            <MenuIcon sx={{ fontSize: { xs: 24, md: 28 } }} />
-          </Box>
-        </IconButton>
-        {/* Rendered with the toggle, never on its own: a rule with nothing to
-            its left is a stray stroke at the bar's edge. */}
-        <HeaderRule />
-
-        {/* Page nav button. No horizontal padding: with it, the gap to the
-            rule read as 20px against 10px everywhere else. */}
+      {/* Own gutters: HEADER_INSET on the left, 14px between the clusters and
+          the loose controls after them; the two clusters set their own,
+          tighter gap. On the right, the content line plus the scrollbar of
+          #main-content, so the lockup's last bar ends where the catalog cards
+          and the browse search field end. */}
+      <Toolbar disableGutters sx={{ gap: '14px', pl: `${String(HEADER_INSET)}px`, pr: `${String(CONTENT_LINE + SCROLLBAR_W)}px` }}>
+        {/* The left cluster: toggle, rule, page picker, rule. Its width is
+            fixed so that it ends exactly at the sidebar's edge and its closing
+            rule lands on the sidebar's 1px border, on every route and whether
+            or not the sidebar is open. Without the fixed width the picker sized
+            to its label and the rule wandered 54px across the nine pages
+            (x=201 on Kits, x=255 on Dashboard) while the border sat at 239.
+            HEADER_CLUSTER_GAP rather than the Toolbar's 14px, because the
+            widest label only fits inside the 220px at the tighter gap. */}
         <Box
-          component="button"
-          onClick={handlePageButtonClick}
-          aria-haspopup="true"
-          aria-controls={pageMenuOpen ? 'page-nav-menu' : undefined}
-          aria-expanded={pageMenuOpen ? 'true' : undefined}
           sx={{
-            display: 'flex', alignItems: 'center', gap: 1,
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'inherit', borderRadius: '8px', px: 0, py: 0.75,
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
-            transition: 'background .12s',
+            display: 'flex', alignItems: 'center', gap: `${String(HEADER_CLUSTER_GAP)}px`,
+            flexShrink: 0, width: sidebarWidth - HEADER_INSET,
           }}
         >
-          {/* `& svg` rather than a prop on the icon: the page icons are shared
-              with the page menu below, which keeps its own size. */}
-          <Box sx={{ color: 'primary.light', display: 'flex', alignItems: 'center', '& svg': { fontSize: { xs: 20, md: 22 } } }}>
-            {currentPage?.icon ?? <DashboardIcon fontSize="small" />}
+          {/* Sidebar toggle. HEADER_ICON_BUTTON_SX cancels the button's own 8px
+              padding on both sides, so the glyph, not the box, sits at the inset
+              and the gap to the rule is measured from its ink - the same rule
+              the right cluster's icon buttons follow. */}
+          <IconButton
+            color="inherit"
+            aria-label={sidebarOpen ? 'close sidebar' : 'open sidebar'}
+            onClick={onMenuClick}
+            sx={HEADER_ICON_BUTTON_SX}
+          >
+            {/* Every size in this bar steps up about 1.17x from md, together with
+                the outlined set in header-trigger-sx.ts - see HEADER_CONTROL_H for
+                why it is all of them at once and why phones keep the smaller set. */}
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {!sidebarOpen
+                ? <ChevronRightIcon sx={{ fontSize: { xs: 18, md: 21 }, opacity: 0.6, mr: -0.5 }} />
+                : <ChevronLeftIcon sx={{ fontSize: { xs: 18, md: 21 }, opacity: 0.6, mr: -0.5 }} />
+              }
+              <MenuIcon sx={{ fontSize: { xs: 24, md: 28 } }} />
+            </Box>
+          </IconButton>
+          {/* Rendered with the toggle, never on its own: a rule with nothing to
+              its left is a stray stroke at the bar's edge. */}
+          <HeaderRule />
+
+          {/* Page nav button. It fills the cluster's remaining width, so the
+              rule after it holds still; icon, label and chevron stay one group,
+              centred in that width, so the slack a short label leaves falls
+              evenly either side rather than piling up before the rule. No
+              horizontal padding: the cluster's gap is the spacing.
+
+              The width is 143px at md and the widest group, Dashboard, is
+              138.4 of it at the 6px inner gap; at the 8px gap the fit was
+              0.3px, which one fallback font would have turned into an
+              ellipsis. A label that no longer fits shows as one. */}
+          <Box
+            component="button"
+            onClick={handlePageButtonClick}
+            aria-haspopup="true"
+            aria-controls={pageMenuOpen ? 'page-nav-menu' : undefined}
+            aria-expanded={pageMenuOpen ? 'true' : undefined}
+            sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.75,
+              flex: 1, minWidth: 0,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'inherit', borderRadius: '8px', px: 0, py: 0.75,
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
+              transition: 'background .12s',
+            }}
+          >
+            {/* `& svg` rather than a prop on the icon: the page icons are shared
+                with the page menu below, which keeps its own size. */}
+            <Box sx={{ color: 'primary.light', display: 'flex', alignItems: 'center', '& svg': { fontSize: { xs: 20, md: 22 } } }}>
+              {currentPage ? <currentPage.Icon fontSize="small" /> : <DashboardIcon fontSize="small" />}
+            </Box>
+            <Typography variant="h6" noWrap sx={{ fontWeight: 600, fontSize: { xs: '1rem', md: '1.1rem' } }}>
+              {currentPage?.label ?? 'Signal Suite'}
+            </Typography>
+            <ExpandMoreIcon sx={{ fontSize: { xs: 16, md: 18 }, opacity: 0.6, transform: pageMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
           </Box>
-          <Typography variant="h6" noWrap sx={{ fontWeight: 600, fontSize: { xs: '1rem', md: '1.1rem' } }}>
-            {currentPage?.label ?? 'Signal Suite'}
-          </Typography>
-          <ExpandMoreIcon sx={{ fontSize: { xs: 16, md: 18 }, opacity: 0.6, transform: pageMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+          <HeaderRule />
         </Box>
-        <HeaderRule />
 
         {/* Export / Template / Import, immediately right of the page dropdown.
             Identical on every route: the dataset is chosen in the dialog, not
@@ -287,14 +348,13 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
 
         {/* The `?` joins the left cluster rather than being centred.
             It was centred between the two clusters, which meant the page
-            picker moved it: the picker sizes to its own label, so across the
-            nine labels the button drifted 26.7px (x=653.5 on Kits against
-            x=680.2 on Dashboard). Reserving the widest label would have pinned
-            it, but the middle of the bar was the wrong home: a centred control
-            on one axis invites a second beneath it to read as a designed
-            pair, which is why the page banners keep their actions at the
-            edges. Packed left there is no width to reserve and nothing to
-            hold still.
+            picker moved it: the picker then sized to its own label, so across
+            the nine labels the button drifted 26.7px (x=653.5 on Kits against
+            x=680.2 on Dashboard). The picker's width is fixed now, for the
+            rule's sake, but the middle of the bar was the wrong home anyway: a
+            centred control on one axis invites a second beneath it to read as
+            a designed pair, which is why the page banners keep their actions
+            at the edges. Packed left there is nothing to hold still.
 
             One spacer now, after it, which is what keeps the account cluster
             hard right. */}
@@ -316,7 +376,7 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
             },
           }}
         >
-          {visibleNavItems.map((item) => {
+          {navItems.map((item) => {
             const active = location.pathname.startsWith(item.path);
             return (
               <MenuItem
@@ -326,7 +386,7 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
                 sx={{ gap: 1.5, borderRadius: '4px', mx: 0.5, my: 0.25, opacity: item.disabled ? 0.45 : 1 }}
               >
                 <Box sx={{ color: active ? 'primary.main' : 'text.secondary', display: 'flex' }}>
-                  {item.icon}
+                  <item.Icon fontSize="small" />
                 </Box>
                 <Typography variant="body2" sx={{
                   fontWeight: active ? 700 : 400
@@ -351,89 +411,111 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
               md to stop the AppBar overflowing; collapsing both clusters is what
               buys the room back.
 
-              Gated on `canWrite || canWritePace`, which is exactly the predicate
-              the divider below already used - a viewer can add nothing, and an
-              empty menu is worse than no button. It always opens as a menu, even
-              for rto and planner, who see only Add Net: a control that changes
-              shape with the viewer's role is harder to describe and harder to
-              test than one that does not.
+              Rendered for every role, a viewer included. It used to disappear
+              when no row survived its gate, on the argument that an empty menu
+              is worse than no button - which is true, and is why the empty
+              case is not an empty menu. A viewer who opens it reads why there
+              is nothing to add and who to ask, which is the same decision
+              authz.md records for the pages: a refusal that says what happened
+              beats a control that is simply not there. It always opens as a
+              menu for the writing roles too, even a planner with three rows: a
+              control that changes shape with the viewer's role is harder to
+              describe and harder to test than one that does not.
 
-              Add Net is gated on canWritePace, not canWrite: rto and planner
-              write nets but not kits or terminals, so folding it in with the
-              other two would hide it from exactly the roles the PACE Planner is
+              Each row is gated on the flag its destination gates on (see
+              AddItem), not on `canWrite`: rto and planner write nets, transports
+              and platforms but not kits or terminals, so one gate for the whole
+              menu would hide rows from exactly the roles the PACE Planner is
               built for.
 
-              Each item navigates to its own page and opens the add drawer there;
-              mutating the current URL's `drawer` param instead would open
-              whichever drawer the current page happens to own. */}
-          {(canWrite || canWritePace) && (
-            <>
-              <Tooltip title="Add">
-                <Button
-                  variant="outlined"
-                  size="small"
-                  disableElevation
-                  aria-label="add"
-                  aria-haspopup="true"
-                  aria-controls={addMenuOpen ? 'add-menu' : undefined}
-                  aria-expanded={addMenuOpen ? 'true' : undefined}
-                  onClick={(e: MouseEvent<HTMLElement>) => setAddMenuAnchor(e.currentTarget)}
-                  sx={HEADER_TRIGGER_SX}
-                >
-                  <AddIcon sx={{ fontSize: ADD_ICON_FONT_SIZE }} />
-                </Button>
-              </Tooltip>
+              Each row navigates to its own page. The first three open the add
+              drawer there; mutating the current URL's `drawer` param instead
+              would open whichever drawer the current page happens to own. The
+              library rows land on the Comms Library with that chip pressed,
+              where the add form is the first thing under the banner. */}
+          <Tooltip title="Add">
+            <Button
+              variant="outlined"
+              size="small"
+              disableElevation
+              aria-label="add"
+              aria-haspopup="true"
+              aria-controls={addMenuOpen ? 'add-menu' : undefined}
+              aria-expanded={addMenuOpen ? 'true' : undefined}
+              onClick={(e: MouseEvent<HTMLElement>) => setAddMenuAnchor(e.currentTarget)}
+              sx={HEADER_TRIGGER_SX}
+            >
+              <AddIcon sx={{ fontSize: ADD_ICON_FONT_SIZE }} />
+            </Button>
+          </Tooltip>
 
-              <Menu
-                id="add-menu"
-                anchorEl={addMenuAnchor}
-                open={addMenuOpen}
-                onClose={handleAddMenuClose}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                slotProps={{
-                  paper: {
-                    elevation: 3,
-                    sx: { minWidth: 200, mt: 0.5, borderRadius: '8px', border: '1px solid', borderColor: 'divider' },
-                  },
-                }}
+          <Menu
+            id="add-menu"
+            anchorEl={addMenuAnchor}
+            open={addMenuOpen}
+            onClose={handleAddMenuClose}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+            slotProps={{
+              paper: {
+                elevation: 3,
+                sx: { minWidth: 200, mt: 0.5, borderRadius: '8px', border: '1px solid', borderColor: 'divider' },
+              },
+            }}
+          >
+            {/* Nothing survived the gates: say so, in the space the rows
+                would fill. Plain text rather than a disabled MenuItem, which
+                would grey out the one thing here the reader needs to read.
+                "viewer" is stated rather than read off `role`, because any
+                account with no write flag is functionally a viewer, whatever
+                its array says - see the hasRole comment in auth-context.tsx. */}
+            {visibleAddItems.length === 0 && (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ px: 2, py: 1, maxWidth: 280 }}
               >
-                {canWrite && (
-                  <MenuItem
-                    onClick={() => handleAdd('/terminals?drawer=add')}
-                    sx={{ gap: 1.5, borderRadius: '4px', mx: 0.5, my: 0.25 }}
-                  >
-                    <Box sx={{ color: 'text.secondary', display: 'flex' }}><SatelliteDishIcon /></Box>
-                    <Typography variant="body2">Add Terminal</Typography>
-                  </MenuItem>
-                )}
+                As a viewer, you’re not able to add anything to the app - contact an administrator if you require higher permissions.
+              </Typography>
+            )}
 
-                {canWrite && (
-                  <MenuItem
-                    onClick={() => handleAdd('/kits?drawer=add')}
-                    sx={{ gap: 1.5, borderRadius: '4px', mx: 0.5, my: 0.25 }}
-                  >
-                    <Box sx={{ color: 'text.secondary', display: 'flex' }}><RouterIcon fontSize="small" /></Box>
-                    <Typography variant="body2">Add Kit</Typography>
-                  </MenuItem>
-                )}
+            {/* A divider where the visible rows change group - so a
+                planner (Net | Transport, Platform | Operation)
+                gets them in the right places too, and an editor with nothing
+                on one side of a divider gets none there. */}
+            {visibleAddItems.flatMap((item, i) => {
+              const previous = visibleAddItems[i - 1];
+              const row = (
+                <MenuItem
+                  key={item.label}
+                  onClick={() => handleAdd(item)}
+                  sx={{ gap: 1.5, borderRadius: '4px', mx: 0.5, my: 0.25 }}
+                >
+                  <Box sx={{ color: 'text.secondary', display: 'flex' }}>{item.icon}</Box>
+                  <Typography variant="body2">{item.label}</Typography>
+                </MenuItem>
+              );
+              return previous && previous.group !== item.group
+                ? [<Divider key={`${item.group}-divider`} sx={{ my: 0.5 }} />, row]
+                : [row];
+            })}
+          </Menu>
 
-                {canWritePace && (
-                  <MenuItem
-                    onClick={() => handleAdd(addNetHref)}
-                    sx={{ gap: 1.5, borderRadius: '4px', mx: 0.5, my: 0.25 }}
-                  >
-                    <Box sx={{ color: 'text.secondary', display: 'flex' }}><SettingsInputAntennaIcon fontSize="small" /></Box>
-                    <Typography variant="body2">Add Net</Typography>
-                  </MenuItem>
-                )}
-              </Menu>
-            </>
+          {addNetOpen && (
+            <NetDrawer
+              open
+              section={netSection}
+              squadrons={squadrons}
+              theater={theater}
+              net={null}
+              onClose={() => setAddNetOpen(false)}
+              onCreated={handleNetCreated}
+            />
           )}
 
-          {/* Same gate as the `+`: the rule separates it from the API icon, and
-              with no `+` there is nothing to separate. */}
-          {(canWrite || canWritePace) && <HeaderRule />}
+          {/* Separates the `+` from the API icon. Unconditional now that the
+              `+` is, so every role sees the same four rules. */}
+          <HeaderRule />
 
           {/* API Documentation. An icon-only button, so it meets the cluster
               gap by its glyph - see HEADER_ICON_BUTTON_SX. */}
@@ -524,9 +606,20 @@ export function Header({ onMenuClick, sidebarOpen, sidebarWidth: _sidebarWidth }
           )}
 
           {/* The product lockup, hard right, for every auth state. The mark's
-              box is its ink, so it meets the cluster gap with nothing added. */}
+              box is its ink, so it meets the cluster gap with nothing added;
+              it is also the home link, so the link adds no padding either. */}
           <HeaderRule />
-          <SignalSuiteMark />
+          <Box
+            component={RouterLink}
+            to="/dashboard"
+            aria-label="Signal Suite - go to Dashboard"
+            sx={{
+              display: 'flex', lineHeight: 0, color: 'inherit', borderRadius: '2px',
+              '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+            }}
+          >
+            <SignalSuiteMark />
+          </Box>
         </Box>
       </Toolbar>
     </AppBar>

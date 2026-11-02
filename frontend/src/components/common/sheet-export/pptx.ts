@@ -26,6 +26,7 @@
  */
 import { emu, slideImagePlacement, type Placement, type SheetSize, type SlideSize } from './slide-geometry';
 import { ttfToEot } from './eot';
+import { connectorGeometry, type Pt } from './pptx-connector';
 import type { FetchedFontFamily } from './sheet-fonts';
 import { zipStore, type ZipEntry } from './zip-store';
 
@@ -128,14 +129,13 @@ export interface PptxPicture {
 }
 
 /**
- * One native text box.
+ * One run of text: a stretch of a paragraph in one face and colour.
  *
  * Sizes are in points and `spc` in hundredths of a point, because that is what
  * DrawingML stores. Converting from the browser's CSS pixels is the caller's
  * job, so this module stays free of anything DOM shaped.
  */
-export interface PptxTextBox {
-  readonly place: Placement;
+export interface PptxRun {
   readonly text: string;
   /** Font family name. Named, not embedded: see the font list in sheet-fonts. */
   readonly font: string;
@@ -146,6 +146,13 @@ export interface PptxTextBox {
   readonly color: string;
   /** Letter spacing, hundredths of a point. */
   readonly spc?: number;
+}
+
+/** One native text box: a single paragraph, one run or several. */
+export interface PptxTextBox extends PptxRun {
+  readonly place: Placement;
+  /** Further runs of the same paragraph, after the one the box's own fields describe. */
+  readonly runs?: readonly PptxRun[];
   readonly align?: 'l' | 'ctr' | 'r';
   readonly anchor?: 't' | 'ctr' | 'b';
   /**
@@ -156,6 +163,124 @@ export interface PptxTextBox {
   readonly wrap?: boolean;
 }
 
+/** A line's colour and weight. `dash` is PowerPoint's own dash, not the screen's dash array. */
+export interface PptxStroke {
+  readonly color: string;
+  readonly widthPt: number;
+  readonly dash?: boolean;
+}
+
+/** The text a shape carries inside itself, so it moves and resizes with the shape. Insets are inches. */
+export type PptxShapeText = Omit<PptxTextBox, 'place'> & {
+  readonly inset?: { readonly l: number; readonly t: number; readonly r: number; readonly b: number };
+};
+
+/**
+ * A native autoshape. `key` names it for a connector to attach to; it is
+ * resolved to a shape id by the writer, so a caller never numbers anything.
+ */
+export interface PptxShape {
+  readonly kind: 'shape';
+  readonly key?: string;
+  readonly name?: string;
+  /** Alt text. */
+  readonly descr?: string;
+  readonly geom: 'rect' | 'roundRect' | 'ellipse';
+  readonly place: Placement;
+  /** `roundRect` only: the corner as a fraction of the shorter side, up to 0.5, which is a pill. */
+  readonly radius?: number;
+  /** Six hex digits; none is no fill. */
+  readonly fill?: string;
+  /** None is no outline. */
+  readonly stroke?: PptxStroke;
+  readonly text?: PptxShapeText;
+}
+
+/** A rectangle's connection sites, in the order DrawingML numbers them: 0 top, 1 left, 2 bottom, 3 right. */
+export type CxnSite = 0 | 1 | 2 | 3;
+
+/**
+ * A native connector along `points`, in inches, from the first to the last.
+ *
+ * `start` and `end` attach it to a shape's connection site by that shape's
+ * `key`, which is what makes PowerPoint carry the line when the shape is
+ * dragged. A connector with neither is a plain line. The stored route is what
+ * is drawn until an end is moved, and then PowerPoint draws it afresh between
+ * the sites, so a route with more bends than an elbow connector has (see
+ * `connectorGeometry`) is right on open and simplified after.
+ */
+export interface PptxConnector {
+  readonly kind: 'connector';
+  readonly name?: string;
+  readonly descr?: string;
+  readonly points: readonly (readonly [number, number])[];
+  readonly start?: { readonly key: string; readonly site: CxnSite };
+  readonly end?: { readonly key: string; readonly site: CxnSite };
+  readonly stroke: PptxStroke;
+}
+
+/** A native text box among the objects, so its place in the stacking order is the caller's. */
+export interface PptxTextObject {
+  readonly kind: 'text';
+  readonly box: PptxTextBox;
+}
+
+/** Objects that move as one: a card and everything on it. The group's frame is the union of its children. */
+export interface PptxGroup {
+  readonly kind: 'group';
+  readonly name?: string;
+  readonly descr?: string;
+  readonly children: readonly PptxObject[];
+}
+
+/**
+ * One cell of a native table: paragraphs of runs, a fill and its four borders.
+ *
+ * A border left out is no border, never the table style's, because a table
+ * here names no style: every line a cell draws is its own, so two cells that
+ * share an edge are given the same stroke on it. `span` is how many grid
+ * columns the cell covers; the writer adds the merged placeholders after it.
+ * Margins are inches.
+ */
+export interface PptxTableCell {
+  /** Each paragraph is a list of runs; an empty list is an empty paragraph. */
+  readonly paragraphs: readonly (readonly PptxRun[])[];
+  readonly align?: 'l' | 'ctr' | 'r';
+  readonly anchor?: 't' | 'ctr' | 'b';
+  /** Six hex digits; none is no fill. */
+  readonly fill?: string;
+  readonly span?: number;
+  readonly borders?: { readonly l?: PptxStroke; readonly r?: PptxStroke; readonly t?: PptxStroke; readonly b?: PptxStroke };
+  readonly margin?: { readonly l: number; readonly t: number; readonly r: number; readonly b: number };
+}
+
+/** A row's height is the least it takes; PowerPoint grows it to fit what the cells hold. */
+export interface PptxTableRow {
+  /** Inches. */
+  readonly h: number;
+  /** In column order; a cell with a `span` stands for that many columns. */
+  readonly cells: readonly PptxTableCell[];
+}
+
+/**
+ * A native table: a `p:graphicFrame` holding an `a:tbl`, so the grid is rows and
+ * cells a person edits in PowerPoint rather than shapes laid out to look like
+ * one. `x` and `y` are the top left corner and the columns' widths its width,
+ * in inches.
+ */
+export interface PptxTable {
+  readonly kind: 'table';
+  readonly name?: string;
+  readonly descr?: string;
+  readonly x: number;
+  readonly y: number;
+  readonly colWidths: readonly number[];
+  readonly rows: readonly PptxTableRow[];
+}
+
+/** One native object on a slide. A list of them is in stacking order, the first at the back. */
+export type PptxObject = PptxShape | PptxConnector | PptxTextObject | PptxGroup | PptxTable;
+
 /**
  * A slide built from parts, rather than one flat picture.
  *
@@ -164,11 +289,15 @@ export interface PptxTextBox {
  * single full-bleed picture - it needs ~100 hairline shapes that are
  * `border-bottom` on text divs rather than elements, its scale varies per
  * record, and it aligns rows on a shared baseline, which a text box cannot do.
+ *
+ * `objects` is for a slide with no picture at all, the operation deck's:
+ * shapes, connectors and groups, over any pictures and `texts`.
  */
 export interface PptxSlide {
   readonly slide: SlideSize;
   readonly pictures: readonly PptxPicture[];
   readonly texts?: readonly PptxTextBox[];
+  readonly objects?: readonly PptxObject[];
   /** Slide background, six hex digits. Needed once there is no picture behind the text. */
   readonly background?: string;
   /**
@@ -206,12 +335,28 @@ function pictureXml(picture: PptxPicture, id: number, embedId: string): string {
   );
 }
 
-function textBoxXml(box: PptxTextBox, id: number): string {
-  const { place } = box;
-  // Insets are zeroed and autofit is off so the box's own rect is the text's
-  // rect. PowerPoint's defaults are a 0.05in left/right inset and 0.025in
-  // top/bottom, which would shift every one of these off its measured
-  // position, and normAutofit would quietly rescale the type.
+function runXml(run: PptxRun): string {
+  const spc = run.spc && run.spc !== 0 ? ` spc="${Math.round(run.spc)}"` : '';
+  const bold = run.bold ? ' b="1"' : '';
+  const italic = run.italic ? ' i="1"' : '';
+  // sz is hundredths of a point, and PowerPoint rejects anything under 1pt.
+  const sz = Math.max(100, Math.round(run.sizePt * 100));
+  return (
+    `<a:r><a:rPr lang="en-US" sz="${sz}"${bold}${italic}${spc} dirty="0">` +
+    `<a:solidFill><a:srgbClr val="${run.color}"/></a:solidFill>` +
+    `<a:latin typeface="${escapeXml(run.font)}"/><a:cs typeface="${escapeXml(run.font)}"/></a:rPr>` +
+    `<a:t>${escapeText(run.text)}</a:t></a:r>`
+  );
+}
+
+/**
+ * The text body of a box or a shape. Insets are zeroed unless the shape says
+ * otherwise and autofit is off, so the rect is the text's rect. PowerPoint's
+ * defaults are a 0.05in left/right inset and 0.025in top/bottom, which would
+ * shift every one of these off its measured position, and normAutofit would
+ * quietly rescale the type.
+ */
+function textBodyXml(box: Omit<PptxTextBox, 'place'>, inset = { l: 0, t: 0, r: 0, b: 0 }): string {
   const anchor = box.anchor ?? 'ctr';
   const align = box.align ?? 'l';
   // `wrap="none"` lets the consumer shrink the shape to fit its one line, which
@@ -221,24 +366,205 @@ function textBoxXml(box: PptxTextBox, id: number): string {
   // came back 33pt wide. So non-wrapping is honoured only where it cannot move
   // anything, and a centred box always keeps the width it was measured at.
   const wrap = box.wrap === false && align === 'l' ? 'none' : 'square';
-  const spc = box.spc && box.spc !== 0 ? ` spc="${Math.round(box.spc)}"` : '';
-  const bold = box.bold ? ' b="1"' : '';
-  const italic = box.italic ? ' i="1"' : '';
-  // sz is hundredths of a point, and PowerPoint rejects anything under 1pt.
-  const sz = Math.max(100, Math.round(box.sizePt * 100));
+  const ins = `lIns="${emu(inset.l)}" tIns="${emu(inset.t)}" rIns="${emu(inset.r)}" bIns="${emu(inset.b)}"`;
+  return (
+    `<p:txBody><a:bodyPr wrap="${wrap}" ${ins} anchor="${anchor}"><a:noAutofit/></a:bodyPr>` +
+    '<a:lstStyle/>' +
+    `<a:p><a:pPr algn="${align}" marL="0" indent="0"/>` +
+    `${runXml(box)}${(box.runs ?? []).map(runXml).join('')}</a:p></p:txBody>`
+  );
+}
 
+function textBoxXml(box: PptxTextBox, id: number): string {
+  const { place } = box;
   return (
     `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Text ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
     `<p:spPr><a:xfrm><a:off x="${emu(place.x)}" y="${emu(place.y)}"/><a:ext cx="${emu(place.w)}" cy="${emu(place.h)}"/></a:xfrm>` +
     '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>' +
-    `<p:txBody><a:bodyPr wrap="${wrap}" lIns="0" tIns="0" rIns="0" bIns="0" anchor="${anchor}"><a:noAutofit/></a:bodyPr>` +
-    '<a:lstStyle/>' +
-    `<a:p><a:pPr algn="${align}" marL="0" indent="0"/>` +
-    `<a:r><a:rPr lang="en-US" sz="${sz}"${bold}${italic}${spc} dirty="0">` +
-    `<a:solidFill><a:srgbClr val="${box.color}"/></a:solidFill>` +
-    `<a:latin typeface="${escapeXml(box.font)}"/><a:cs typeface="${escapeXml(box.font)}"/></a:rPr>` +
-    `<a:t>${escapeText(box.text)}</a:t></a:r></a:p></p:txBody></p:sp>`
+    `${textBodyXml(box)}</p:sp>`
   );
+}
+
+/** The outline: DrawingML orders fill, dash, join, so the dash follows the colour. */
+function lineXml(stroke: PptxStroke | undefined): string {
+  if (!stroke) return '<a:ln><a:noFill/></a:ln>';
+  return (
+    `<a:ln w="${Math.round(stroke.widthPt * 12700)}"><a:solidFill><a:srgbClr val="${stroke.color}"/></a:solidFill>` +
+    `${stroke.dash ? '<a:prstDash val="dash"/>' : ''}</a:ln>`
+  );
+}
+
+const nameAttrs = (id: number, name: string | undefined, fallback: string, descr: string | undefined) =>
+  `id="${id}" name="${escapeXml(name ?? `${fallback} ${id}`)}"${descr ? ` descr="${escapeXml(descr)}"` : ''}`;
+
+/** Where a native object has its ids, and which key stands for which. */
+interface ObjectIds {
+  readonly ids: Map<PptxObject, number>;
+  readonly keys: Map<string, number>;
+}
+
+/**
+ * Numbers every object in stacking order, groups before their children, and
+ * records the id each `key` stands for. Done before anything is written
+ * because a connector sits under the cards it is attached to, so it names an
+ * id that has not been written yet.
+ */
+function numberObjects(objects: readonly PptxObject[], first: number): { numbered: ObjectIds; next: number } {
+  const numbered: ObjectIds = { ids: new Map(), keys: new Map() };
+  let next = first;
+  const walk = (list: readonly PptxObject[]) => {
+    for (const object of list) {
+      numbered.ids.set(object, next);
+      if (object.kind === 'shape' && object.key !== undefined) {
+        if (numbered.keys.has(object.key)) throw new Error(`Two shapes on one slide are both keyed "${object.key}".`);
+        numbered.keys.set(object.key, next);
+      }
+      next += 1;
+      if (object.kind === 'group') walk(object.children);
+    }
+  };
+  walk(objects);
+  return { numbered, next };
+}
+
+type Box = readonly [number, number, number, number];
+
+/** An object's frame on the slide in EMU: left, top, right, bottom. A group's is the union of its children's. */
+function frameOf(object: PptxObject): Box {
+  switch (object.kind) {
+    case 'shape': {
+      const { place } = object;
+      return [emu(place.x), emu(place.y), emu(place.x) + emu(place.w), emu(place.y) + emu(place.h)];
+    }
+    case 'text': {
+      const { place } = object.box;
+      return [emu(place.x), emu(place.y), emu(place.x) + emu(place.w), emu(place.y) + emu(place.h)];
+    }
+    case 'connector': {
+      const xs = object.points.map((p) => emu(p[0]));
+      const ys = object.points.map((p) => emu(p[1]));
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    }
+    case 'group': {
+      const frames = object.children.map(frameOf);
+      return [
+        Math.min(...frames.map((f) => f[0])), Math.min(...frames.map((f) => f[1])),
+        Math.max(...frames.map((f) => f[2])), Math.max(...frames.map((f) => f[3])),
+      ];
+    }
+    case 'table': {
+      const w = object.colWidths.reduce((sum, c) => sum + emu(c), 0);
+      const h = object.rows.reduce((sum, r) => sum + emu(r.h), 0);
+      return [emu(object.x), emu(object.y), emu(object.x) + w, emu(object.y) + h];
+    }
+  }
+}
+
+function shapeXml(shape: PptxShape, id: number): string {
+  const { place } = shape;
+  const adj = shape.geom === 'roundRect'
+    ? `<a:avLst><a:gd name="adj" fmla="val ${String(Math.round(Math.min(0.5, Math.max(0, shape.radius ?? 0.1667)) * 100000))}"/></a:avLst>`
+    : '<a:avLst/>';
+  const fill = shape.fill ? `<a:solidFill><a:srgbClr val="${shape.fill}"/></a:solidFill>` : '<a:noFill/>';
+  const { text } = shape;
+  return (
+    `<p:sp><p:nvSpPr><p:cNvPr ${nameAttrs(id, shape.name, 'Shape', shape.descr)}/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>` +
+    `<p:spPr><a:xfrm><a:off x="${emu(place.x)}" y="${emu(place.y)}"/><a:ext cx="${emu(place.w)}" cy="${emu(place.h)}"/></a:xfrm>` +
+    `<a:prstGeom prst="${shape.geom}">${adj}</a:prstGeom>${fill}${lineXml(shape.stroke)}</p:spPr>` +
+    `${text ? textBodyXml(text, text.inset) : ''}</p:sp>`
+  );
+}
+
+function connectorXml(connector: PptxConnector, id: number, keys: ReadonlyMap<string, number>): string {
+  // Level to within 0.015in, a pixel and a half at 96 to the inch, is level: a layout's right-angled routes drift that much.
+  const g = connectorGeometry(connector.points.map((p): Pt => [emu(p[0]), emu(p[1])]), emu(0.015));
+  const glue = (tag: 'stCxn' | 'endCxn', to: PptxConnector['start']) => {
+    if (!to) return '';
+    const target = keys.get(to.key);
+    if (target === undefined) throw new Error(`A connector is attached to "${to.key}", which no shape on the slide is keyed.`);
+    return `<a:${tag} id="${target}" idx="${to.site}"/>`;
+  };
+  const flips = `${g.rot ? ` rot="${g.rot}"` : ''}${g.flipH ? ' flipH="1"' : ''}${g.flipV ? ' flipV="1"' : ''}`;
+  const adj = g.adj.length > 0
+    ? `<a:avLst>${g.adj.map((v, i) => `<a:gd name="adj${i + 1}" fmla="val ${v}"/>`).join('')}</a:avLst>`
+    : '<a:avLst/>';
+  return (
+    `<p:cxnSp><p:nvCxnSpPr><p:cNvPr ${nameAttrs(id, connector.name, 'Connector', connector.descr)}/>` +
+    `<p:cNvCxnSpPr>${glue('stCxn', connector.start)}${glue('endCxn', connector.end)}</p:cNvCxnSpPr><p:nvPr/></p:nvCxnSpPr>` +
+    `<p:spPr><a:xfrm${flips}><a:off x="${g.off[0]}" y="${g.off[1]}"/><a:ext cx="${g.ext[0]}" cy="${g.ext[1]}"/></a:xfrm>` +
+    `<a:prstGeom prst="${g.preset}">${adj}</a:prstGeom>${lineXml(connector.stroke)}</p:spPr></p:cxnSp>`
+  );
+}
+
+/** One side of a cell: its stroke, or no line at all, in the element the schema names it by. */
+function cellLineXml(tag: 'lnL' | 'lnR' | 'lnT' | 'lnB', stroke: PptxStroke | undefined): string {
+  if (!stroke) return `<a:${tag} w="0"><a:noFill/></a:${tag}>`;
+  return (
+    `<a:${tag} w="${Math.round(stroke.widthPt * 12700)}" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:srgbClr val="${stroke.color}"/></a:solidFill>` +
+    `<a:prstDash val="${stroke.dash ? 'dash' : 'solid'}"/></a:${tag}>`
+  );
+}
+
+const EMPTY_CELL_BODY = '<a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></a:txBody><a:tcPr/>';
+
+function tableCellXml(cell: PptxTableCell): string {
+  const span = cell.span ?? 1;
+  const align = cell.align ?? 'l';
+  const margin = cell.margin ?? { l: 0.1, t: 0.05, r: 0.1, b: 0.05 };
+  const paragraphs = (cell.paragraphs.length > 0 ? cell.paragraphs : [[]])
+    .map((runs) => `<a:p><a:pPr algn="${align}"/>${runs.map(runXml).join('')}${runs.length === 0 ? '<a:endParaRPr lang="en-US"/>' : ''}</a:p>`)
+    .join('');
+  const { borders } = cell;
+  const fill = cell.fill ? `<a:solidFill><a:srgbClr val="${cell.fill}"/></a:solidFill>` : '<a:noFill/>';
+  // The merged cells a span covers carry nothing of their own; the schema still wants them in the row.
+  const merged = Array.from({ length: span - 1 }, () => `<a:tc hMerge="1">${EMPTY_CELL_BODY}</a:tc>`).join('');
+  return (
+    `<a:tc${span > 1 ? ` gridSpan="${span}"` : ''}><a:txBody><a:bodyPr/><a:lstStyle/>${paragraphs}</a:txBody>` +
+    `<a:tcPr marL="${emu(margin.l)}" marR="${emu(margin.r)}" marT="${emu(margin.t)}" marB="${emu(margin.b)}" anchor="${cell.anchor ?? 'ctr'}">` +
+    // CT_TableCellProperties fixes the order: the four lines, then the fill.
+    `${cellLineXml('lnL', borders?.l)}${cellLineXml('lnR', borders?.r)}${cellLineXml('lnT', borders?.t)}${cellLineXml('lnB', borders?.b)}${fill}</a:tcPr></a:tc>${merged}`
+  );
+}
+
+function tableXml(table: PptxTable, id: number): string {
+  const cols = table.colWidths.length;
+  table.rows.forEach((row, r) => {
+    const covered = row.cells.reduce((sum, c) => sum + (c.span ?? 1), 0);
+    if (covered !== cols) throw new Error(`Row ${r + 1} of a table covers ${covered} columns of ${cols}.`);
+  });
+  const [x0, y0, x1, y1] = frameOf(table);
+  const grid = table.colWidths.map((w) => `<a:gridCol w="${emu(w)}"/>`).join('');
+  const rows = table.rows
+    .map((row) => `<a:tr h="${emu(row.h)}">${row.cells.map(tableCellXml).join('')}</a:tr>`)
+    .join('');
+  return (
+    `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr ${nameAttrs(id, table.name, 'Table', table.descr)}/>` +
+    '<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>' +
+    `<p:xfrm><a:off x="${x0}" y="${y0}"/><a:ext cx="${x1 - x0}" cy="${y1 - y0}"/></p:xfrm>` +
+    '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">' +
+    `<a:tbl><a:tblPr firstRow="1"/><a:tblGrid>${grid}</a:tblGrid>${rows}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`
+  );
+}
+
+function objectXml(object: PptxObject, numbered: ObjectIds): string {
+  const id = numbered.ids.get(object)!;
+  switch (object.kind) {
+    case 'table': return tableXml(object, id);
+    case 'shape': return shapeXml(object, id);
+    case 'text': return textBoxXml(object.box, id);
+    case 'connector': return connectorXml(object, id, numbered.keys);
+    case 'group': {
+      const [x0, y0, x1, y1] = frameOf(object);
+      const off = `<a:off x="${x0}" y="${y0}"/>`;
+      const ext = `<a:ext cx="${x1 - x0}" cy="${y1 - y0}"/>`;
+      return (
+        `<p:grpSp><p:nvGrpSpPr><p:cNvPr ${nameAttrs(id, object.name, 'Group', object.descr)}/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>` +
+        // The child space is the slide's own, so a child's coordinates are written as they are.
+        `<p:grpSpPr><a:xfrm>${off}${ext}<a:chOff x="${x0}" y="${y0}"/><a:chExt cx="${x1 - x0}" cy="${y1 - y0}"/></a:xfrm></p:grpSpPr>` +
+        `${object.children.map((child) => objectXml(child, numbered)).join('')}</p:grpSp>`
+      );
+    }
+  }
 }
 
 function slideXml(input: PptxSlide): string {
@@ -252,24 +578,23 @@ function slideXml(input: PptxSlide): string {
     .map((picture, index) => pictureXml(picture, id++, `rId${index + 1}`))
     .join('');
   const texts = (input.texts ?? []).map((box) => textBoxXml(box, id++)).join('');
+  const objects = input.objects ?? [];
+  const { numbered } = numberObjects(objects, id);
+  const native = objects.map((object) => objectXml(object, numbered)).join('');
 
   return (
     `${DECL}<p:sld xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}">` +
-    `<p:cSld>${background}${EMPTY_SP_TREE}${pictures}${texts}</p:spTree></p:cSld>` +
+    `<p:cSld>${background}${EMPTY_SP_TREE}${pictures}${texts}${native}</p:spTree></p:cSld>` +
     '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>'
   );
 }
 
 /**
- * Every part, in the order they are written into the archive.
- *
- * One media part per picture, so the count is 16 + pictures rather than fixed.
+ * The embedded fonts of a package: what `p:presentation` lists, the
+ * relationships it needs and the parts themselves. Shared by the single slide
+ * and the deck, which differ in nothing about fonts but where they are listed.
  */
-export function pptxSlideParts(input: PptxSlide): ZipEntry[] {
-  const { slide, pictures } = input;
-  const cx = emu(slide.w);
-  const cy = emu(slide.h);
-
+function embedFonts(fontFamilies: readonly FetchedFontFamily[]) {
   // One part per DISTINCT face, so a family naming one file for both slots
   // costs one copy rather than two. Oswald ships only as a variable file here
   // and fills both slots with it, which without this would embed 165 KB twice.
@@ -278,7 +603,6 @@ export function pptxSlideParts(input: PptxSlide): ZipEntry[] {
   // converted once rather than once per slot. Keyed on the face bytes AND the
   // typeface, because the EOT header carries the family name: two families
   // sharing one file would still need a header each.
-  const fontFamilies = input.fonts ?? [];
   const fontFiles: { name: string; data: Uint8Array; relId: string }[] = [];
   const relForFace = new Map<Uint8Array, { relId: string; typeface: string }>();
 
@@ -318,6 +642,20 @@ export function pptxSlideParts(input: PptxSlide): ZipEntry[] {
         `<Relationship Id="${file.relId}" Type="${NS_R}/font" Target="${file.name.replace('ppt/', '')}"/>`,
     )
     .join('');
+
+  return { embeddedFontLst, fontRels, fontFiles };
+}
+
+/**
+ * Every part, in the order they are written into the archive.
+ *
+ * One media part per picture, so the count is 16 + pictures rather than fixed.
+ */
+export function pptxSlideParts(input: PptxSlide): ZipEntry[] {
+  const { slide, pictures } = input;
+  const cx = emu(slide.w);
+  const cy = emu(slide.h);
+  const { embeddedFontLst, fontRels, fontFiles } = embedFonts(input.fonts ?? []);
 
   const imageRels = pictures
     .map((_, i) => `<Relationship Id="rId${i + 1}" Type="${NS_R}/image" Target="../media/image${i + 1}.png"/>`)
@@ -422,4 +760,121 @@ export function buildPptx(input: PptxPictureSlide): Uint8Array {
 /** The composite case: pictures plus native text. Pure, same as `buildPptx`. */
 export function buildPptxSlide(input: PptxSlide): Uint8Array {
   return zipStore(pptxSlideParts(input));
+}
+
+/**
+ * Every part of a deck of N slides, in the order they are written.
+ *
+ * Added beside `pptxSlideParts` rather than replacing it, so the single-slide
+ * writers are untouched; for one slide this produces the same package, byte
+ * for byte, which `pptx.test.ts` asserts. What changes with N:
+ *
+ * - `presentation.xml` lists a `sldId` per slide, ids from 256 in order.
+ * - The presentation's rels keep rId1..rId6 for the master, the first slide
+ *   and the four fixed parts, and give slide k (k >= 2) rId(k + 5), so adding
+ *   a slide never renumbers what a one-slide package already used.
+ * - Every slide has its own rels part. Its images are named by a count across
+ *   the whole deck (`image1.png`..`imageM.png`), so two slides can never
+ *   write the same media part, while each slide's own `r:embed` ids stay
+ *   rId1.. as `slideXml` writes them.
+ * - Every slide shares the one layout, and the size comes from the first
+ *   slide: a deck has one size, so a slide of another is refused rather than
+ *   silently drawn at the wrong scale.
+ *
+ * Fonts belong to the deck, never to a slide: `options.fonts` is embedded once
+ * and every slide's native text draws on it, where a slide that names some of
+ * its own is refused rather than having them dropped. With none, which is
+ * every deck of pictures, no font part, relationship or list is written and
+ * the package is what it was before fonts were accepted here.
+ */
+export function pptxDeckParts(slides: readonly PptxSlide[], options: { readonly fonts?: readonly FetchedFontFamily[] } = {}): ZipEntry[] {
+  const first = slides[0];
+  if (!first) throw new Error('A deck needs at least one slide.');
+  const { slide: size } = first;
+  for (const s of slides) {
+    if (s.slide.w !== size.w || s.slide.h !== size.h) throw new Error('Every slide in a deck must be the same size.');
+    if (s.fonts && s.fonts.length > 0) throw new Error('A deck embeds its fonts once, not per slide.');
+  }
+  const cx = emu(size.w);
+  const cy = emu(size.h);
+  const { embeddedFontLst, fontRels, fontFiles } = embedFonts(options.fonts ?? []);
+
+  const slideOverrides = slides
+    .map((_, k) => `<Override PartName="/ppt/slides/slide${k + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`)
+    .join('');
+  const slideRelId = (k: number) => (k === 0 ? 'rId2' : `rId${k + 6}`);
+  const sldIds = slides.map((_, k) => `<p:sldId id="${256 + k}" r:id="${slideRelId(k)}"/>`).join('');
+  const slideRel = (k: number) =>
+    `<Relationship Id="${slideRelId(k)}" Type="${NS_R}/slide" Target="slides/slide${k + 1}.xml"/>`;
+  // The first slide keeps the slot a one-slide package gives it; the rest follow the fixed parts.
+  const laterSlideRels = slides.slice(1).map((_, k) => slideRel(k + 1)).join('');
+  // Where each slide's pictures start in the deck-wide media numbering.
+  let mediaCount = 0;
+  const slideParts: ZipEntry[] = [];
+  const mediaParts: ZipEntry[] = [];
+  slides.forEach((s, k) => {
+    const imageRels = s.pictures
+      .map((_, i) => `<Relationship Id="rId${i + 1}" Type="${NS_R}/image" Target="../media/image${mediaCount + i + 1}.png"/>`)
+      .join('');
+    slideParts.push(
+      { name: `ppt/slides/slide${k + 1}.xml`, data: slideXml(s) },
+      {
+        name: `ppt/slides/_rels/slide${k + 1}.xml.rels`,
+        data: `${DECL}<Relationships xmlns="${NS_PKG_REL}">${imageRels}<Relationship Id="rId${s.pictures.length + 1}" Type="${NS_R}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`,
+      },
+    );
+    s.pictures.forEach((picture, i) => {
+      mediaParts.push({ name: `ppt/media/image${mediaCount + i + 1}.png`, data: picture.png });
+    });
+    mediaCount += s.pictures.length;
+  });
+
+  return [
+    {
+      name: '[Content_Types].xml',
+      data: `${DECL}<Types xmlns="${NS_CT}"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="fntdata" ContentType="application/x-fontdata"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>${slideOverrides}<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/><Override PartName="/ppt/presProps.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presProps+xml"/><Override PartName="/ppt/viewProps.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.viewProps+xml"/><Override PartName="/ppt/tableStyles.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`,
+    },
+    {
+      name: '_rels/.rels',
+      data: `${DECL}<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${NS_R}/officeDocument" Target="ppt/presentation.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="${NS_R}/extended-properties" Target="docProps/app.xml"/></Relationships>`,
+    },
+    {
+      name: 'ppt/presentation.xml',
+      data: `${DECL}<p:presentation xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${sldIds}</p:sldIdLst><p:sldSz cx="${cx}" cy="${cy}"/><p:notesSz cx="${cy}" cy="${cx}"/>${embeddedFontLst}</p:presentation>`,
+    },
+    {
+      name: 'ppt/_rels/presentation.xml.rels',
+      data: `${DECL}<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${NS_R}/slideMaster" Target="slideMasters/slideMaster1.xml"/>${slideRel(0)}<Relationship Id="rId3" Type="${NS_R}/theme" Target="theme/theme1.xml"/><Relationship Id="rId4" Type="${NS_R}/presProps" Target="presProps.xml"/><Relationship Id="rId5" Type="${NS_R}/viewProps" Target="viewProps.xml"/><Relationship Id="rId6" Type="${NS_R}/tableStyles" Target="tableStyles.xml"/>${laterSlideRels}${fontRels}</Relationships>`,
+    },
+    { name: 'ppt/theme/theme1.xml', data: THEME_XML },
+    { name: 'ppt/presProps.xml', data: PRES_PROPS_XML },
+    { name: 'ppt/viewProps.xml', data: VIEW_PROPS_XML },
+    { name: 'ppt/tableStyles.xml', data: TABLE_STYLES_XML },
+    { name: 'docProps/core.xml', data: CORE_XML },
+    { name: 'docProps/app.xml', data: APP_XML.replace('<Slides>1</Slides>', `<Slides>${slides.length}</Slides>`) },
+    {
+      name: 'ppt/slideMasters/slideMaster1.xml',
+      data: `${DECL}<p:sldMaster xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:cSld>${EMPTY_SP_TREE}</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>${HEADER_FOOTER}${TX_STYLES}</p:sldMaster>`,
+    },
+    {
+      name: 'ppt/slideMasters/_rels/slideMaster1.xml.rels',
+      data: `${DECL}<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${NS_R}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${NS_R}/theme" Target="../theme/theme1.xml"/></Relationships>`,
+    },
+    {
+      name: 'ppt/slideLayouts/slideLayout1.xml',
+      data: `${DECL}<p:sldLayout xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}" preserve="1"><p:cSld name="DEFAULT"><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg>${EMPTY_SP_TREE}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`,
+    },
+    {
+      name: 'ppt/slideLayouts/_rels/slideLayout1.xml.rels',
+      data: `${DECL}<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${NS_R}/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+    },
+    ...slideParts,
+    ...mediaParts,
+    ...fontFiles.map((file) => ({ name: file.name, data: file.data })),
+  ];
+}
+
+/** A deck of slides, one per entry, in order. Pure, same as `buildPptxSlide`. */
+export function buildPptxDeck(slides: readonly PptxSlide[], options: { readonly fonts?: readonly FetchedFontFamily[] } = {}): Uint8Array {
+  return zipStore(pptxDeckParts(slides, options));
 }

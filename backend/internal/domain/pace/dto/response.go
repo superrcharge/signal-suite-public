@@ -45,6 +45,7 @@ type PlanResponse struct {
 // editor and the print route each make exactly one request.
 type CardResponse struct {
 	Section string `json:"section"`
+	Theater string `json:"theater"`
 	Title   string `json:"title"`
 	// Empty when unset -- the sheet shows no date subtext.
 	EffectiveDate string `json:"effective_date"`
@@ -59,9 +60,9 @@ type CardResponse struct {
 	// Always an array, never null: a null would force every consumer to guard,
 	// and the sheet renders nothing either way, so the difference would go
 	// unnoticed right up until it did not.
-	LTACRows   []FreqRowResponse   `json:"ltac_rows"`
-	TACSATRows []FreqRowResponse   `json:"tacsat_rows"`
-	TmnRows []TmnRowResponse `json:"tmn_rows"`
+	LTACRows   []FreqRowResponse `json:"ltac_rows"`
+	TACSATRows []FreqRowResponse `json:"tacsat_rows"`
+	TmnRows    []TmnRowResponse  `json:"tmn_rows"`
 
 	// Always exactly four, in P A C E order, even for a squadron that has saved
 	// none. Padding on read is what keeps the response shape constant so no

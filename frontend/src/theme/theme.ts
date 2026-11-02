@@ -54,7 +54,7 @@ const getDesignTokens = (mode: PaletteMode) => ({
         }
       : {
           // Amber is the one accent, frame to content. It was blue here while
-          // the amber scale loaded only with catalog-tokens.css, so the
+          // the SHF amber scale loaded only with catalog-tokens.css, so the
           // shell and /catalog read as two apps. Blue survives as `info`.
           // theme/global-styles.tsx publishes these same values as the
           // --shf-amber* custom properties for the CSS that reads them.

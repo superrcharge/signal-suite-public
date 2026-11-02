@@ -26,10 +26,11 @@ var csvTable = csvtable.Table[Net]{
 	New:         func() *Net { return &Net{} },
 
 	Preamble: []string{
-		"REQUIRED: name (case-insensitive unique within this squadron) and radio_type.",
+		"REQUIRED: name (case-insensitive unique within this squadron and theater) and radio_type.",
+		"theater is conus | oconus | both; blank means conus.",
 		"Rows import into the squadron named in the URL. The section column is",
 		"exported for reference and ignored on import.",
-		"Delete every # line and the EXAMPLE rows. Keep the header row below.",
+		"Delete the EXAMPLE rows and keep the header row. These # lines can stay: import skips them.",
 	},
 
 	Columns: []csvtable.Column[Net]{
@@ -61,6 +62,17 @@ var csvTable = csvtable.Table[Net]{
 			Get:     csvtable.Str(func(n *Net) string { return n.RadioType }),
 			Set:     csvtable.SetStr(func(n *Net, v string) { n.RadioType = strings.ToLower(strings.TrimSpace(v)) }),
 			Example: []string{"jem", "mpu5"},
+		},
+		{
+			// Default rather than a service fallback: csvtable substitutes it for
+			// a blank cell and for a file with no theater column at all, so a
+			// file written before theaters existed still imports as CONUS.
+			Key: "theater", Label: "Theater",
+			Enum: ValidTheaters, EnumFold: true, Default: TheaterCONUS,
+			Note:    "Theater: conus | oconus | both  (blank = conus)",
+			Get:     csvtable.Str(func(n *Net) string { return n.Theater }),
+			Set:     csvtable.SetStr(func(n *Net, v string) { n.Theater = strings.ToLower(strings.TrimSpace(v)) }),
+			Example: []string{"conus", "both"},
 		},
 		{
 			// Freeform on purpose: a net is recorded as a range or a placeholder
@@ -188,43 +200,38 @@ func (s *Service) ImportNets(ctx context.Context, section, csvBody, actor string
 		return 0, nil, ErrSectionNotFound
 	}
 
-	existing, err := s.repo.FindBySection(ctx, section)
-	if err != nil {
-		return 0, nil, ErrNetInternalError
-	}
-	names := make([]string, 0, len(existing))
-	for _, n := range existing {
-		names = append(names, n.Name)
-	}
-
-	parsed, err := bound.Parse(csvBody, names)
+	// Parse gets no existing names: a name is taken per theater's list, which
+	// Parse cannot judge, so the check runs per row below against the same
+	// rule create uses. Parse still refuses a duplicate within the file.
+	parsed, err := bound.Parse(csvBody, nil)
 	if err != nil {
 		return 0, nil, err
 	}
 
 	now := time.Now().UTC()
-	created := make([]*Net, 0, len(parsed.Rows))
 	for i, n := range parsed.Rows {
 		// Stamped from the URL, never from the file.
 		n.Section = section
 		if n.FreqUnit == "" {
 			n.FreqUnit = FreqUnitMHz
 		}
+		taken, err := s.repo.NameExists(ctx, section, n.Theater, n.Name)
+		if err != nil {
+			return 0, nil, ErrNetInternalError
+		}
+		if taken {
+			parsed.Reject(i, n.Name, "duplicate - name already exists in this theater")
+			continue
+		}
 		n.CreatedBy = actor
 		n.UpdatedBy = actor
 		n.CreatedAt = now
 		n.UpdatedAt = now
 		if err := s.repo.Create(ctx, n); err != nil {
-			parsed.Errors = append(parsed.Errors, csvtable.RowError{
-				Row:    i + 2,
-				Name:   n.Name,
-				Errors: []string{"could not be saved"},
-			})
+			parsed.Reject(i, n.Name, "could not be saved")
 			continue
 		}
-		created = append(created, n)
 	}
-	parsed.Rows = created
 
-	return csvtable.ImportStatus(len(parsed.Rows), len(parsed.Errors)), parsed, nil
+	return parsed.Finish(), parsed, nil
 }

@@ -117,7 +117,7 @@ func TestCreateNet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var created *Net
 			repo := &MockRepository{
-				NameExistsFunc: func(_ context.Context, _, _ string) (bool, error) {
+				NameExistsFunc: func(_ context.Context, _, _, _ string) (bool, error) {
 					return tt.nameExists, nil
 				},
 				CreateFunc: func(_ context.Context, n *Net) error {
@@ -299,7 +299,7 @@ func TestUpdateNet(t *testing.T) {
 	t.Run("rejects renaming onto an existing name", func(t *testing.T) {
 		repo := &MockRepository{
 			FindByIDFunc: func(_ context.Context, _ string) (*Net, error) { return sampleNet(), nil },
-			NameExistsExcludingFunc: func(_ context.Context, _, _, _ string) (bool, error) {
+			NameExistsExcludingFunc: func(_ context.Context, _, _, _, _ string) (bool, error) {
 				return true, nil
 			},
 		}
